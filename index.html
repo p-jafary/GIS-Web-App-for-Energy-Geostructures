@@ -182,13 +182,18 @@
 
       map.addLayer({
         id: "points-layer",
-        type: "circle",
+        type: "symbol",
         source: "points",
+        layout: {
+          "icon-image": "marker-15",   // built-in Mapbox marker
+          "icon-size": 1.2,
+          "icon-allow-overlap": true
+                },
         paint: {
-          "circle-radius": 5,
-          "circle-stroke-width": 1
-        }
-      });
+          "icon-color": "#e60000"      // red
+              }
+        });
+      
 
       // Initial world fit
       const bounds = new mapboxgl.LngLatBounds();
@@ -238,3 +243,4 @@
   </script>
 </body>
 </html>
+
