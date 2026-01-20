@@ -49,9 +49,10 @@
 
     /* Scrollable popup */
     .popup-content {
-      max-height: 220px;
+      max-height: 240px;
       overflow-y: auto;
       font-size: 12px;
+      line-height: 1.4;
     }
   </style>
 </head>
@@ -78,6 +79,12 @@
     mapboxgl.accessToken =
       "pk.eyJ1IjoicGphZmFyeSIsImEiOiJjbWttMnB1cWgwYm9yM2VvcjBsaDVjZjZ6In0.4hnFagy7O71f_AJTMS1guQ";
 
+    let geojson; // global reference
+
+    const FIELD_TYPE = "Type";
+    const FIELD_COUNTRY = "Installation type: Country";
+    const GEOJSON_FILE = "./data.geojson";
+
     const map = new mapboxgl.Map({
       container: "map",
       style: "mapbox://styles/mapbox/streets-v12",
@@ -86,23 +93,18 @@
       projection: "mercator"
     });
 
-    /* ---- Make map completely static ---- */
-    map.dragPan.disable();
-    map.scrollZoom.disable();
-    map.boxZoom.disable();
-    map.doubleClickZoom.disable();
-    map.keyboard.disable();
-    map.touchZoomRotate.disable();
-    map.dragRotate.disable();
+    /* ---- Interaction rules ---- */
+    map.dragPan.disable();        // no panning
+    map.dragRotate.disable();     // no rotation
     map.setPitch(0);
     map.setBearing(0);
     map.setMaxPitch(0);
 
-    // Field names (case-sensitive)
-    const FIELD_TYPE = "Type";
-    const FIELD_COUNTRY = "Installation type: Country";
-
-    const GEOJSON_FILE = "./data.geojson";
+    // Allow zooming
+    map.scrollZoom.enable();
+    map.doubleClickZoom.enable();
+    map.keyboard.enable();
+    map.touchZoomRotate.enable();
 
     const typeSelect = document.getElementById("typeSelect");
     const countrySelect = document.getElementById("countrySelect");
@@ -119,22 +121,45 @@
       }
 
       map.setFilter("points-layer", filters.length > 1 ? filters : null);
+
+      /* ---- Zoom to filtered country ---- */
+      if (countrySelect.value !== "__all__") {
+        const bounds = new mapboxgl.LngLatBounds();
+
+        geojson.features.forEach(f => {
+          if (
+            f.geometry?.type === "Point" &&
+            f.properties?.[FIELD_COUNTRY] === countrySelect.value &&
+            (typeSelect.value === "__all__" ||
+              f.properties?.[FIELD_TYPE] === typeSelect.value)
+          ) {
+            bounds.extend(f.geometry.coordinates);
+          }
+        });
+
+        if (!bounds.isEmpty()) {
+          map.fitBounds(bounds, {
+            padding: 60,
+            maxZoom: 6,
+            duration: 800
+          });
+        }
+      }
     }
 
     map.on("load", async () => {
       const res = await fetch(GEOJSON_FILE);
-      const geojson = await res.json();
+      geojson = await res.json();
 
       const types = new Set();
       const countries = new Set();
 
-      for (const f of geojson.features) {
+      geojson.features.forEach(f => {
         const t = f?.properties?.[FIELD_TYPE];
         const c = f?.properties?.[FIELD_COUNTRY];
-
         if (t) types.add(String(t));
         if (c) countries.add(String(c));
-      }
+      });
 
       [...types].sort().forEach(v => {
         const opt = document.createElement("option");
@@ -165,7 +190,7 @@
         }
       });
 
-      // Fit once (then static)
+      // Initial world fit
       const bounds = new mapboxgl.LngLatBounds();
       geojson.features.forEach(f => {
         if (f.geometry?.type === "Point") {
@@ -174,7 +199,10 @@
       });
 
       if (!bounds.isEmpty()) {
-        map.fitBounds(bounds, { padding: 40, maxZoom: 6 });
+        map.fitBounds(bounds, {
+          padding: 40,
+          maxZoom: 4
+        });
       }
 
       // Scrollable popup
@@ -190,9 +218,9 @@
           </div>
         `;
 
-        new mapboxgl.Popup({ maxWidth: "360px" })
+        new mapboxgl.Popup({ maxWidth: "380px" })
           .setLngLat(e.lngLat)
-          .setHTML(html || "<div>No fields to show</div>")
+          .setHTML(html)
           .addTo(map);
       });
 
