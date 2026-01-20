@@ -41,6 +41,11 @@
       projection: "mercator"
     });
 
+    map.on("style.load", () => {
+      map.setProjection("mercator");
+      console.log("Projection is now:", map.getProjection());
+    });
+
     // Your GeoJSON field name (case-sensitive)
     const FIELD_TYPE = "Type";
 
@@ -125,4 +130,5 @@
   </script>
 </body>
 </html>
+
 
