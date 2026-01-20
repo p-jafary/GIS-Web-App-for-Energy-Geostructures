@@ -5,25 +5,15 @@
   <title>My Points Map</title>
   <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no" />
 
-  <!-- Mapbox CSS -->
   <link
     href="https://api.mapbox.com/mapbox-gl-js/v3.18.0/mapbox-gl.css"
     rel="stylesheet"
   />
+  <script src="https://api.mapbox.com/mapbox-gl-js/v3.18.0/mapbox-gl.js"></script>
 
   <style>
-    body {
-      margin: 0;
-      padding: 0;
-      font-family: sans-serif;
-    }
-
-    #map {
-      position: absolute;
-      top: 0;
-      bottom: 0;
-      width: 100%;
-    }
+    body { margin: 0; padding: 0; font-family: sans-serif; }
+    #map { position: absolute; top: 0; bottom: 0; width: 100%; }
 
     .panel {
       position: absolute;
@@ -33,7 +23,7 @@
       background: white;
       padding: 10px 12px;
       border-radius: 10px;
-      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+      box-shadow: 0 2px 12px rgba(0,0,0,0.15);
       max-width: 320px;
     }
 
@@ -47,201 +37,179 @@
       width: 100%;
     }
 
-    /* Scrollable popup */
     .popup-content {
       max-height: 240px;
       overflow-y: auto;
       font-size: 12px;
-      line-height: 1.4;
     }
   </style>
 </head>
 
 <body>
-  <div id="map"></div>
+<div id="map"></div>
 
-  <div class="panel">
-    <label for="typeSelect">Filter by Type</label>
-    <select id="typeSelect">
-      <option value="__all__">All</option>
-    </select>
+<div class="panel">
+  <label for="typeSelect">Filter by Type</label>
+  <select id="typeSelect">
+    <option value="__all__">All</option>
+  </select>
 
-    <label for="countrySelect">Filter by Country</label>
-    <select id="countrySelect">
-      <option value="__all__">All</option>
-    </select>
-  </div>
+  <label for="countrySelect">Filter by Country</label>
+  <select id="countrySelect">
+    <option value="__all__">All</option>
+  </select>
+</div>
 
-  <!-- Mapbox JS -->
-  <script src="https://api.mapbox.com/mapbox-gl-js/v3.18.0/mapbox-gl.js"></script>
+<script>
+mapboxgl.accessToken =
+  "pk.eyJ1IjoicGphZmFyeSIsImEiOiJjbWttMnB1cWgwYm9yM2VvcjBsaDVjZjZ6In0.4hnFagy7O71f_AJTMS1guQ";
 
-  <script>
-    mapboxgl.accessToken =
-      "pk.eyJ1IjoicGphZmFyeSIsImEiOiJjbWttMnB1cWgwYm9yM2VvcjBsaDVjZjZ6In0.4hnFagy7O71f_AJTMS1guQ";
+let geojson;
 
-    let geojson;
+const FIELD_TYPE = "Type";
+const FIELD_COUNTRY = "Installation type: Country";
+const GEOJSON_FILE = "./data.geojson";
 
-    const FIELD_TYPE = "Type";
-    const FIELD_COUNTRY = "Installation type: Country";
-    const GEOJSON_FILE = "./data.geojson";
+const map = new mapboxgl.Map({
+  container: "map",
+  style: "mapbox://styles/mapbox/streets-v12",
+  center: [0, 20],
+  zoom: 1.2
+});
 
-    const map = new mapboxgl.Map({
-      container: "map",
-      style: "mapbox://styles/mapbox/streets-v12",
-      center: [0, 20],
-      zoom: 1.2,
-      projection: "mercator"
+/* ---- Interaction rules ---- */
+map.dragPan.disable();
+map.dragRotate.disable();
+map.setPitch(0);
+map.setBearing(0);
+map.setMaxPitch(0);
+
+// Zoom allowed
+map.scrollZoom.enable();
+map.doubleClickZoom.enable();
+map.keyboard.enable();
+map.touchZoomRotate.enable();
+
+const typeSelect = document.getElementById("typeSelect");
+const countrySelect = document.getElementById("countrySelect");
+
+function applyFilters() {
+  const filters = ["all"];
+
+  if (typeSelect.value !== "__all__") {
+    filters.push(["==", ["get", FIELD_TYPE], typeSelect.value]);
+  }
+
+  if (countrySelect.value !== "__all__") {
+    filters.push(["==", ["get", FIELD_COUNTRY], countrySelect.value]);
+  }
+
+  map.setFilter("points-layer", filters.length > 1 ? filters : null);
+
+  if (countrySelect.value !== "__all__") {
+    const bounds = new mapboxgl.LngLatBounds();
+
+    geojson.features.forEach(f => {
+      if (
+        f.geometry?.type === "Point" &&
+        f.properties?.[FIELD_COUNTRY] === countrySelect.value &&
+        (typeSelect.value === "__all__" ||
+         f.properties?.[FIELD_TYPE] === typeSelect.value)
+      ) {
+        bounds.extend(f.geometry.coordinates);
+      }
     });
 
-    /* ---- Interaction rules ---- */
-    map.dragPan.disable();        // no panning
-    map.dragRotate.disable();     // no rotation
-    map.setPitch(0);
-    map.setBearing(0);
-    map.setMaxPitch(0);
-
-    // Allow zooming
-    map.scrollZoom.enable();
-    map.doubleClickZoom.enable();
-    map.keyboard.enable();
-    map.touchZoomRotate.enable();
-
-    const typeSelect = document.getElementById("typeSelect");
-    const countrySelect = document.getElementById("countrySelect");
-
-    function applyFilters() {
-      const filters = ["all"];
-
-      if (typeSelect.value !== "__all__") {
-        filters.push(["==", ["get", FIELD_TYPE], typeSelect.value]);
-      }
-
-      if (countrySelect.value !== "__all__") {
-        filters.push(["==", ["get", FIELD_COUNTRY], countrySelect.value]);
-      }
-
-      map.setFilter("points-layer", filters.length > 1 ? filters : null);
-
-      // Auto-zoom to filtered country
-      if (countrySelect.value !== "__all__") {
-        const bounds = new mapboxgl.LngLatBounds();
-
-        geojson.features.forEach(f => {
-          if (
-            f.geometry?.type === "Point" &&
-            f.properties?.[FIELD_COUNTRY] === countrySelect.value &&
-            (typeSelect.value === "__all__" ||
-              f.properties?.[FIELD_TYPE] === typeSelect.value)
-          ) {
-            bounds.extend(f.geometry.coordinates);
-          }
-        });
-
-        if (!bounds.isEmpty()) {
-          map.fitBounds(bounds, {
-            padding: 60,
-            maxZoom: 6,
-            duration: 800
-          });
-        }
-      }
+    if (!bounds.isEmpty()) {
+      map.fitBounds(bounds, { padding: 60, maxZoom: 6 });
     }
+  }
+}
 
-    map.on("load", async () => {
-      const res = await fetch(GEOJSON_FILE);
-      geojson = await res.json();
+map.on("load", async () => {
+  const res = await fetch(GEOJSON_FILE);
+  geojson = await res.json();
 
-      const types = new Set();
-      const countries = new Set();
+  const types = new Set();
+  const countries = new Set();
 
-      geojson.features.forEach(f => {
-        const t = f?.properties?.[FIELD_TYPE];
-        const c = f?.properties?.[FIELD_COUNTRY];
-        if (t) types.add(String(t));
-        if (c) countries.add(String(c));
-      });
+  geojson.features.forEach(f => {
+    if (f.properties?.[FIELD_TYPE]) types.add(f.properties[FIELD_TYPE]);
+    if (f.properties?.[FIELD_COUNTRY]) countries.add(f.properties[FIELD_COUNTRY]);
+  });
 
-      [...types].sort().forEach(v => {
-        const opt = document.createElement("option");
-        opt.value = v;
-        opt.textContent = v;
-        typeSelect.appendChild(opt);
-      });
+  [...types].sort().forEach(v => {
+    const o = document.createElement("option");
+    o.value = v; o.textContent = v;
+    typeSelect.appendChild(o);
+  });
 
-      [...countries].sort().forEach(v => {
-        const opt = document.createElement("option");
-        opt.value = v;
-        opt.textContent = v;
-        countrySelect.appendChild(opt);
-      });
+  [...countries].sort().forEach(v => {
+    const o = document.createElement("option");
+    o.value = v; o.textContent = v;
+    countrySelect.appendChild(o);
+  });
 
-      map.addSource("points", {
-        type: "geojson",
-        data: geojson
-      });
+  map.addSource("points", {
+    type: "geojson",
+    data: geojson
+  });
 
-      /* ---- RED LOCATION PIN SYMBOL LAYER ---- */
+  /* ---- LOAD CUSTOM MARKER IMAGE (Mapbox-approved way) ---- */
+  map.loadImage(
+    "https://docs.mapbox.com/mapbox-gl-js/assets/custom_marker.png",
+    (err, image) => {
+      if (err) throw err;
+
+      map.addImage("custom-marker", image);
+
       map.addLayer({
         id: "points-layer",
         type: "symbol",
         source: "points",
         layout: {
-          "icon-image": "circle-stroked-15",   // built-in Mapbox marker
-          "icon-size": 1.3,
+          "icon-image": "custom-marker",
+          "icon-size": 0.6,
+          "icon-anchor": "bottom",
           "icon-allow-overlap": true
-        },
-        paint: {
-          "icon-color": "#e60000"      // red
         }
       });
+    }
+  );
 
-      // Initial world fit
-      const bounds = new mapboxgl.LngLatBounds();
-      geojson.features.forEach(f => {
-        if (f.geometry?.type === "Point") {
-          bounds.extend(f.geometry.coordinates);
-        }
-      });
+  // Initial fit
+  const bounds = new mapboxgl.LngLatBounds();
+  geojson.features.forEach(f => {
+    if (f.geometry?.type === "Point") bounds.extend(f.geometry.coordinates);
+  });
+  if (!bounds.isEmpty()) map.fitBounds(bounds, { padding: 40, maxZoom: 4 });
 
-      if (!bounds.isEmpty()) {
-        map.fitBounds(bounds, {
-          padding: 40,
-          maxZoom: 4
-        });
-      }
+  // Popup
+  map.on("click", "points-layer", e => {
+    const p = e.features[0].properties;
+    const html = `
+      <div class="popup-content">
+        ${Object.entries(p)
+          .slice(7, 67)
+          .map(([k, v]) => `<div><b>${k}</b>: ${v}</div>`)
+          .join("")}
+      </div>`;
+    new mapboxgl.Popup()
+      .setLngLat(e.lngLat)
+      .setHTML(html)
+      .addTo(map);
+  });
 
-      // Scrollable popup
-      map.on("click", "points-layer", e => {
-        const p = e.features[0].properties;
+  map.on("mouseenter", "points-layer", () => {
+    map.getCanvas().style.cursor = "pointer";
+  });
+  map.on("mouseleave", "points-layer", () => {
+    map.getCanvas().style.cursor = "";
+  });
 
-        const html = `
-          <div class="popup-content">
-            ${Object.entries(p)
-              .slice(7, 67)
-              .map(([k, v]) => `<div><b>${k}</b>: ${v}</div>`)
-              .join("")}
-          </div>
-        `;
-
-        new mapboxgl.Popup({ maxWidth: "380px" })
-          .setLngLat(e.lngLat)
-          .setHTML(html)
-          .addTo(map);
-      });
-
-      map.on("mouseenter", "points-layer", () => {
-        map.getCanvas().style.cursor = "pointer";
-      });
-
-      map.on("mouseleave", "points-layer", () => {
-        map.getCanvas().style.cursor = "";
-      });
-
-      typeSelect.addEventListener("change", applyFilters);
-      countrySelect.addEventListener("change", applyFilters);
-    });
-  </script>
+  typeSelect.addEventListener("change", applyFilters);
+  countrySelect.addEventListener("change", applyFilters);
+});
+</script>
 </body>
 </html>
-
-
