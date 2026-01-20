@@ -37,7 +37,8 @@
       container: "map",
       style: "mapbox://styles/mapbox/streets-v12",
       center: [0, 20],   // safe default, will be overridden by fitBounds
-      zoom: 1.2
+      zoom: 1.2,
+      projection: "mercator"
     });
 
     // Your GeoJSON field name (case-sensitive)
@@ -124,3 +125,4 @@
   </script>
 </body>
 </html>
+
