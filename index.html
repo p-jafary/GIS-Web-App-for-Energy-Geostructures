@@ -2,20 +2,29 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>My Points Map</title>
+  <title>TRASP Installations Map</title>
   <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no" />
   <link href="https://api.mapbox.com/mapbox-gl-js/v3.18.0/mapbox-gl.css" rel="stylesheet">
 
   <style>
     body { margin:0; padding:0; font-family: sans-serif; }
     #map { position:absolute; top:0; bottom:0; width:100%; }
+
     .panel {
       position: absolute; top: 12px; left: 12px; z-index: 1;
       background: white; padding: 10px 12px; border-radius: 10px;
-      box-shadow: 0 2px 12px rgba(0,0,0,0.15); max-width: 320px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+      max-width: 320px;
     }
     .panel label { display:block; margin: 8px 0 4px; font-size: 12px; }
-    .panel select { width: 100%; }
+    .panel select { width: 100%; padding: 4px; }
+
+    /* Make popup scrollable */
+    .mapboxgl-popup-content {
+      max-height: 260px;
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
   </style>
 </head>
 
@@ -27,6 +36,11 @@
     <select id="typeSelect">
       <option value="__all__">All</option>
     </select>
+
+    <label for="countrySelect">Filter by Country</label>
+    <select id="countrySelect">
+      <option value="__all__">All</option>
+    </select>
   </div>
 
   <script src="https://api.mapbox.com/mapbox-gl-js/v3.18.0/mapbox-gl.js"></script>
@@ -36,57 +50,111 @@
     const map = new mapboxgl.Map({
       container: "map",
       style: "mapbox://styles/mapbox/streets-v12",
-      center: [0, 20],   // safe default, will be overridden by fitBounds
+      center: [0, 20],
       zoom: 1.2,
       projection: "mercator"
     });
 
+    // Force flat 2D and lock rotation/pitch
     map.on("style.load", () => {
       map.setProjection("mercator");
-      console.log("Projection is now:", map.getProjection());
     });
 
-    map.on("load", () => {
-      map.setPitch(0);
-      map.setBearing(0);
+    // Add zoom controls (no compass)
+    map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-right");
 
-      map.dragRotate.disable();
-      map.touchZoomRotate.disableRotation();
-      map.keyboard.disableRotation();
-
-      // Optional: prevent any pitch changes via code or gestures
-      map.setMaxPitch(0);
-    });
-
-    // Your GeoJSON field name (case-sensitive)
+    // ---- YOUR DATA FIELD NAMES (must match GeoJSON exactly) ----
     const FIELD_TYPE = "Type";
-
-    // IMPORTANT: rename your geojson to "data.geojson" to avoid space/URL issues
+    const FIELD_COUNTRY = "Installation type: Country"; // <-- your requested field
     const GEOJSON_FILE = "./data.geojson";
 
     const typeSelect = document.getElementById("typeSelect");
+    const countrySelect = document.getElementById("countrySelect");
+
+    function escapeHtml(val) {
+      const s = String(val ?? "");
+      return s.replace(/&/g, "&amp;")
+              .replace(/</g, "&lt;")
+              .replace(/>/g, "&gt;")
+              .replace(/"/g, "&quot;")
+              .replace(/'/g, "&#039;");
+    }
 
     function applyFilters() {
       const selectedType = typeSelect.value;
+      const selectedCountry = countrySelect.value;
 
-      if (selectedType === "__all__") {
-        map.setFilter("points-layer", null); // show everything
-      } else {
-        map.setFilter("points-layer", ["==", ["get", FIELD_TYPE], selectedType]);
+      const filters = ["all"];
+
+      if (selectedType !== "__all__") {
+        filters.push(["==", ["get", FIELD_TYPE], selectedType]);
       }
+      if (selectedCountry !== "__all__") {
+        filters.push(["==", ["get", FIELD_COUNTRY], selectedCountry]);
+      }
+
+      // Apply to your points layer
+      map.setFilter("points-layer", filters.length > 1 ? filters : null);
+    }
+
+    // Create a custom “trap/tunnel-ish” icon using an inline SVG
+    function addTrapIcon() {
+      return new Promise((resolve) => {
+        const svg = `
+          <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+            <!-- outer circle -->
+            <circle cx="32" cy="32" r="26" fill="#ffffff" stroke="#111111" stroke-width="4"/>
+            <!-- tunnel arch -->
+            <path d="M18 36c0-10 6-18 14-18s14 8 14 18v10H18V36z"
+                  fill="#e9e9e9" stroke="#111111" stroke-width="3" />
+            <!-- “trap” marker -->
+            <path d="M32 20 L40 34 H24 Z" fill="#111111"/>
+            <circle cx="32" cy="40" r="4" fill="#111111"/>
+          </svg>
+        `.trim();
+
+        const img = new Image(32, 32);
+        img.onload = () => {
+          if (!map.hasImage("trapIcon")) {
+            map.addImage("trapIcon", img, { pixelRatio: 2 });
+          }
+          resolve();
+        };
+        img.onerror = () => resolve(); // fallback: still resolve
+        img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+      });
     }
 
     map.on("load", async () => {
+      // Lock the basemap (no panning/dragging)
+      map.dragPan.disable();
+      map.touchPan.disable();
+      map.doubleClickZoom.disable();   // optional: comment out if you want double click zoom
+      map.boxZoom.disable();
+      map.dragRotate.disable();
+      map.touchZoomRotate.disableRotation();
+      map.keyboard.disable();          // prevents arrow-key panning too
+      map.setPitch(0);
+      map.setBearing(0);
+      map.setMaxPitch(0);
+
       // Load GeoJSON
       const res = await fetch(GEOJSON_FILE);
       const geojson = await res.json();
 
-      // Populate dropdown with unique values
+      // Populate dropdowns with unique values
       const types = new Set();
+      const countries = new Set();
+
       for (const f of geojson.features) {
-        const v = f?.properties?.[FIELD_TYPE];
-        if (v !== undefined && v !== null && v !== "") types.add(String(v));
+        const p = f?.properties || {};
+        const t = p[FIELD_TYPE];
+        const c = p[FIELD_COUNTRY];
+
+        if (t !== undefined && t !== null && String(t).trim() !== "") types.add(String(t));
+        if (c !== undefined && c !== null && String(c).trim() !== "") countries.add(String(c));
       }
+
       [...types].sort().forEach(v => {
         const opt = document.createElement("option");
         opt.value = v;
@@ -94,41 +162,61 @@
         typeSelect.appendChild(opt);
       });
 
+      [...countries].sort().forEach(v => {
+        const opt = document.createElement("option");
+        opt.value = v;
+        opt.textContent = v;
+        countrySelect.appendChild(opt);
+      });
+
       map.addSource("points", { type: "geojson", data: geojson });
 
+      // Add custom icon
+      await addTrapIcon();
+
+      // Use a SYMBOL layer with the custom icon
       map.addLayer({
         id: "points-layer",
         type: "circle",
         source: "points",
-        paint: {
+      paint: {
           "circle-radius": 5,
           "circle-stroke-width": 1
+              }
+      });
+      map.addLayer({
+        id: "points-layer",
+        type: "symbol",
+        source: "points",
+        layout: {
+          "icon-image": "trapIcon",
+          "icon-size": 0.55,
+          "icon-allow-overlap": true,
+          "icon-ignore-placement": true
         }
       });
 
-      // Fit map to all points (worldwide)
+      // Fit map to all points once (worldwide)
       const bounds = new mapboxgl.LngLatBounds();
       for (const f of geojson.features) {
         const g = f.geometry;
         if (!g) continue;
-
         if (g.type === "Point") bounds.extend(g.coordinates);
         else if (g.type === "MultiPoint") g.coordinates.forEach(c => bounds.extend(c));
       }
       if (!bounds.isEmpty()) {
-        map.fitBounds(bounds, { padding: 40, maxZoom: 10 });
+        map.fitBounds(bounds, { padding: 40, maxZoom: 10, duration: 0 });
       }
 
       // Popup on click (entries 7..66)
       map.on("click", "points-layer", (e) => {
-        const p = e.features[0].properties;
-
+        const p = e.features[0].properties || {};
         const html = Object.entries(p)
           .slice(7, 67)
-          .map(([k,v]) => `<div><b>${k}</b>: ${v}</div>`)
+          .map(([k,v]) => `<div><b>${escapeHtml(k)}</b>: ${escapeHtml(v)}</div>`)
           .join("");
 
-        new mapboxgl.Popup()
+        new mapboxgl.Popup({ maxWidth: "340px" })
           .setLngLat(e.lngLat)
           .setHTML(html || "<div>No fields to show</div>")
           .addTo(map);
@@ -137,10 +225,10 @@
       map.on("mouseenter", "points-layer", () => map.getCanvas().style.cursor = "pointer");
       map.on("mouseleave", "points-layer", () => map.getCanvas().style.cursor = "");
 
+      // Hook up filters
       typeSelect.addEventListener("change", applyFilters);
+      countrySelect.addEventListener("change", applyFilters);
     });
   </script>
 </body>
 </html>
-
-
