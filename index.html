@@ -46,6 +46,18 @@
       console.log("Projection is now:", map.getProjection());
     });
 
+    map.on("load", () => {
+      map.setPitch(0);
+      map.setBearing(0);
+
+      map.dragRotate.disable();
+      map.touchZoomRotate.disableRotation();
+      map.keyboard.disableRotation();
+
+      // Optional: prevent any pitch changes via code or gestures
+      map.setMaxPitch(0);
+    });
+
     // Your GeoJSON field name (case-sensitive)
     const FIELD_TYPE = "Type";
 
@@ -130,5 +142,6 @@
   </script>
 </body>
 </html>
+
 
 
