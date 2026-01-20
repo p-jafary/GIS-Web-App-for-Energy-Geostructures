@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>TRASP Installations Map</title>
+  <title>My Points Map</title>
   <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no" />
 
   <link
@@ -40,7 +40,6 @@
     .popup-content {
       max-height: 240px;
       overflow-y: auto;
-      overflow-x: hidden;
       font-size: 12px;
     }
   </style>
@@ -62,170 +61,155 @@
 </div>
 
 <script>
-  mapboxgl.accessToken =
-    "pk.eyJ1IjoicGphZmFyeSIsImEiOiJjbWttMnB1cWgwYm9yM2VvcjBsaDVjZjZ6In0.4hnFagy7O71f_AJTMS1guQ";
+mapboxgl.accessToken =
+  "pk.eyJ1IjoicGphZmFyeSIsImEiOiJjbWttMnB1cWgwYm9yM2VvcjBsaDVjZjZ6In0.4hnFagy7O71f_AJTMS1guQ";
 
-  let geojson;
+let geojson;
 
-  const FIELD_TYPE = "Type";
-  const FIELD_COUNTRY = "Installation type: Country";
-  const GEOJSON_FILE = "./data.geojson";
+const FIELD_TYPE = "Type";
+const FIELD_COUNTRY = "Installation type: Country";
+const GEOJSON_FILE = "./data.geojson";
 
-  // ---- MAP (FORCED 2D / FLAT) ----
-  const map = new mapboxgl.Map({
-    container: "map",
-    style: "mapbox://styles/mapbox/streets-v12",
-    center: [0, 20],
-    zoom: 1.2,
-    projection: "mercator"   // forces flat map instead of globe
-  });
+const map = new mapboxgl.Map({
+  container: "map",
+  style: "mapbox://styles/mapbox/streets-v12",
+  center: [0, 20],
+  zoom: 1.2
+});
 
-  // v12 styles default to globe; enforce mercator after style applies
-  map.on("style.load", () => {
-    map.setProjection("mercator");
-  });
+/* ---- Interaction rules ---- */
+map.dragPan.disable();
+map.dragRotate.disable();
+map.setPitch(0);
+map.setBearing(0);
+map.setMaxPitch(0);
 
-  // ---- Interaction rules: no panning, no rotation/tilt; zoom allowed ----
-  map.dragPan.disable();                         // static basemap (no drag)
-  map.touchPan.disable();                        // no pan on touch
-  map.dragRotate.disable();
-  map.touchZoomRotate.disableRotation();
-  map.keyboard.disableRotation();
+// Zoom allowed
+map.scrollZoom.enable();
+map.doubleClickZoom.enable();
+map.keyboard.enable();
+map.touchZoomRotate.enable();
 
-  map.setPitch(0);
-  map.setBearing(0);
-  map.setMaxPitch(0);
+const typeSelect = document.getElementById("typeSelect");
+const countrySelect = document.getElementById("countrySelect");
 
-  // Zoom allowed
-  map.scrollZoom.enable();
-  map.doubleClickZoom.enable();
-  map.boxZoom.disable();                         // optional: keep disabled
-  map.keyboard.enable();                         // ok; rotation still disabled
-  map.touchZoomRotate.enable();                  // enables pinch zoom; rotation remains disabled
+function applyFilters() {
+  const filters = ["all"];
 
-  const typeSelect = document.getElementById("typeSelect");
-  const countrySelect = document.getElementById("countrySelect");
-
-  function applyFilters() {
-    const filters = ["all"];
-
-    if (typeSelect.value !== "__all__") {
-      filters.push(["==", ["get", FIELD_TYPE], typeSelect.value]);
-    }
-
-    if (countrySelect.value !== "__all__") {
-      filters.push(["==", ["get", FIELD_COUNTRY], countrySelect.value]);
-    }
-
-    map.setFilter("points-layer", filters.length > 1 ? filters : null);
-
-    // Optional: zoom to filtered results when a country is selected
-    if (countrySelect.value !== "__all__" && geojson?.features?.length) {
-      const bounds = new mapboxgl.LngLatBounds();
-
-      geojson.features.forEach(f => {
-        if (
-          f.geometry?.type === "Point" &&
-          f.properties?.[FIELD_COUNTRY] === countrySelect.value &&
-          (typeSelect.value === "__all__" || f.properties?.[FIELD_TYPE] === typeSelect.value)
-        ) {
-          bounds.extend(f.geometry.coordinates);
-        }
-      });
-
-      if (!bounds.isEmpty()) {
-        map.fitBounds(bounds, { padding: 60, maxZoom: 6, duration: 500 });
-      }
-    }
+  if (typeSelect.value !== "__all__") {
+    filters.push(["==", ["get", FIELD_TYPE], typeSelect.value]);
   }
 
-  map.on("load", async () => {
-    const res = await fetch(GEOJSON_FILE);
-    geojson = await res.json();
+  if (countrySelect.value !== "__all__") {
+    filters.push(["==", ["get", FIELD_COUNTRY], countrySelect.value]);
+  }
 
-    const types = new Set();
-    const countries = new Set();
+  map.setFilter("points-layer", filters.length > 1 ? filters : null);
 
-    geojson.features.forEach(f => {
-      if (f.properties?.[FIELD_TYPE]) types.add(f.properties[FIELD_TYPE]);
-      if (f.properties?.[FIELD_COUNTRY]) countries.add(f.properties[FIELD_COUNTRY]);
-    });
-
-    [...types].sort().forEach(v => {
-      const o = document.createElement("option");
-      o.value = v; o.textContent = v;
-      typeSelect.appendChild(o);
-    });
-
-    [...countries].sort().forEach(v => {
-      const o = document.createElement("option");
-      o.value = v; o.textContent = v;
-      countrySelect.appendChild(o);
-    });
-
-    map.addSource("points", {
-      type: "geojson",
-      data: geojson
-    });
-
-    // ---- Load custom marker image ----
-    map.loadImage(
-      "https://docs.mapbox.com/mapbox-gl-js/assets/custom_marker.png",
-      (err, image) => {
-        if (err) throw err;
-
-        if (!map.hasImage("custom-marker")) {
-          map.addImage("custom-marker", image);
-        }
-
-        map.addLayer({
-          id: "points-layer",
-          type: "symbol",
-          source: "points",
-          layout: {
-            "icon-image": "custom-marker",
-            "icon-size": 0.6,
-            "icon-anchor": "bottom",
-            "icon-allow-overlap": true
-          }
-        });
-      }
-    );
-
-    // Initial fit to all points
+  if (countrySelect.value !== "__all__") {
     const bounds = new mapboxgl.LngLatBounds();
+
     geojson.features.forEach(f => {
-      if (f.geometry?.type === "Point") bounds.extend(f.geometry.coordinates);
-    });
-    if (!bounds.isEmpty()) map.fitBounds(bounds, { padding: 40, maxZoom: 4, duration: 0 });
-
-    // Popup with scroll
-    map.on("click", "points-layer", e => {
-      const p = e.features[0].properties || {};
-      const html = `
-        <div class="popup-content">
-          ${Object.entries(p)
-            .slice(7, 67)
-            .map(([k, v]) => `<div><b>${k}</b>: ${v}</div>`)
-            .join("")}
-        </div>`;
-
-      new mapboxgl.Popup({ maxWidth: "360px" })
-        .setLngLat(e.lngLat)
-        .setHTML(html)
-        .addTo(map);
+      if (
+        f.geometry?.type === "Point" &&
+        f.properties?.[FIELD_COUNTRY] === countrySelect.value &&
+        (typeSelect.value === "__all__" ||
+         f.properties?.[FIELD_TYPE] === typeSelect.value)
+      ) {
+        bounds.extend(f.geometry.coordinates);
+      }
     });
 
-    map.on("mouseenter", "points-layer", () => {
-      map.getCanvas().style.cursor = "pointer";
-    });
-    map.on("mouseleave", "points-layer", () => {
-      map.getCanvas().style.cursor = "";
-    });
+    if (!bounds.isEmpty()) {
+      map.fitBounds(bounds, { padding: 60, maxZoom: 6 });
+    }
+  }
+}
 
-    typeSelect.addEventListener("change", applyFilters);
-    countrySelect.addEventListener("change", applyFilters);
+map.on("load", async () => {
+  const res = await fetch(GEOJSON_FILE);
+  geojson = await res.json();
+
+  const types = new Set();
+  const countries = new Set();
+
+  geojson.features.forEach(f => {
+    if (f.properties?.[FIELD_TYPE]) types.add(f.properties[FIELD_TYPE]);
+    if (f.properties?.[FIELD_COUNTRY]) countries.add(f.properties[FIELD_COUNTRY]);
   });
+
+  [...types].sort().forEach(v => {
+    const o = document.createElement("option");
+    o.value = v; o.textContent = v;
+    typeSelect.appendChild(o);
+  });
+
+  [...countries].sort().forEach(v => {
+    const o = document.createElement("option");
+    o.value = v; o.textContent = v;
+    countrySelect.appendChild(o);
+  });
+
+  map.addSource("points", {
+    type: "geojson",
+    data: geojson
+  });
+
+  /* ---- LOAD CUSTOM MARKER IMAGE (Mapbox-approved way) ---- */
+  map.loadImage(
+    "https://docs.mapbox.com/mapbox-gl-js/assets/custom_marker.png",
+    (err, image) => {
+      if (err) throw err;
+
+      map.addImage("custom-marker", image);
+
+      map.addLayer({
+        id: "points-layer",
+        type: "symbol",
+        source: "points",
+        layout: {
+          "icon-image": "custom-marker",
+          "icon-size": 0.6,
+          "icon-anchor": "bottom",
+          "icon-allow-overlap": true
+        }
+      });
+    }
+  );
+
+  // Initial fit
+  const bounds = new mapboxgl.LngLatBounds();
+  geojson.features.forEach(f => {
+    if (f.geometry?.type === "Point") bounds.extend(f.geometry.coordinates);
+  });
+  if (!bounds.isEmpty()) map.fitBounds(bounds, { padding: 40, maxZoom: 4 });
+
+  // Popup
+  map.on("click", "points-layer", e => {
+    const p = e.features[0].properties;
+    const html = `
+      <div class="popup-content">
+        ${Object.entries(p)
+          .slice(7, 67)
+          .map(([k, v]) => `<div><b>${k}</b>: ${v}</div>`)
+          .join("")}
+      </div>`;
+    new mapboxgl.Popup()
+      .setLngLat(e.lngLat)
+      .setHTML(html)
+      .addTo(map);
+  });
+
+  map.on("mouseenter", "points-layer", () => {
+    map.getCanvas().style.cursor = "pointer";
+  });
+  map.on("mouseleave", "points-layer", () => {
+    map.getCanvas().style.cursor = "";
+  });
+
+  typeSelect.addEventListener("change", applyFilters);
+  countrySelect.addEventListener("change", applyFilters);
+});
 </script>
 </body>
 </html>
