@@ -10,8 +10,10 @@
 
   <style>
     :root { --sidebar-w: 330px; }
+
     body { margin: 0; font-family: sans-serif; background: #f5f5f5; }
 
+    /* Layout: sidebar + map panel */
     .app {
       height: 100vh;
       display: grid;
@@ -29,10 +31,23 @@
       overflow: auto;
     }
 
-    .sidebar h1 { font-size: 16px; margin: 0 0 8px; }
-    .sidebar .hint { font-size: 12px; color: #555; margin: 0 0 12px; line-height: 1.35; }
+    .sidebar h1 {
+      font-size: 16px;
+      margin: 0 0 8px;
+    }
 
-    .sidebar label { display: block; margin: 10px 0 4px; font-size: 12px; }
+    .sidebar .hint {
+      font-size: 12px;
+      color: #555;
+      margin: 0 0 12px;
+      line-height: 1.35;
+    }
+
+    .sidebar label {
+      display: block;
+      margin: 10px 0 4px;
+      font-size: 12px;
+    }
 
     .sidebar select {
       width: 100%;
@@ -42,7 +57,11 @@
       background: #fff;
     }
 
-    .sidebar .btnrow { display: flex; gap: 8px; margin-top: 12px; }
+    .sidebar .btnrow {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+    }
 
     .sidebar button {
       flex: 1;
@@ -72,8 +91,12 @@
       position: relative;
     }
 
-    #map { width: 100%; height: 100%; }
+    #map {
+      width: 100%;
+      height: 100%;
+    }
 
+    /* Scrollable popup content */
     .popup-content {
       max-height: 240px;
       overflow-y: auto;
@@ -81,10 +104,15 @@
       font-size: 12px;
     }
 
+    /* Make Mapbox controls sit nicely inside panel */
     .mapboxgl-ctrl-top-right { top: 10px; right: 10px; }
 
+    /* Responsive: stack on small screens */
     @media (max-width: 900px) {
-      .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+      .app {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto 1fr;
+      }
       :root { --sidebar-w: 100%; }
     }
   </style>
@@ -125,7 +153,6 @@
 
     let geojson;
     let allBounds;
-    let layerReady = false;
 
     const FIELD_TYPE = "Type";
     const FIELD_COUNTRY = "Installation type: Country";
@@ -136,8 +163,6 @@
     const resetBtn = document.getElementById("resetBtn");
     const fitAllBtn = document.getElementById("fitAllBtn");
     const statsBox = document.getElementById("statsBox");
-
-    function norm(v) { return String(v ?? "").trim(); }
 
     const map = new mapboxgl.Map({
       container: "map",
@@ -155,10 +180,8 @@
     // Controls (no compass)
     map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-right");
 
-    /* ---- Interaction rules (flat 2D, no rotation, panning allowed by you) ---- */
-    // If you want NO panning, uncomment:
-    // map.dragPan.disable();
-
+    /* ---- Interaction rules (flat 2D, no rotation, no panning) ---- */
+    map.dragPan.disable();
     map.dragRotate.disable();
     map.touchZoomRotate.disableRotation();
     map.keyboard.disableRotation();
@@ -201,24 +224,21 @@
         if (f?.geometry?.type !== "Point") return false;
 
         const p = f.properties || {};
-        const okType = (t === "__all__") || (norm(p[FIELD_TYPE]) === norm(t));
-        const okCountry = (c === "__all__") || (norm(p[FIELD_COUNTRY]) === norm(c));
+        const okType = (t === "__all__") || (p[FIELD_TYPE] === t);
+        const okCountry = (c === "__all__") || (p[FIELD_COUNTRY] === c);
         return okType && okCountry;
       });
     }
 
     function applyFilters({ fitToFiltered = false } = {}) {
-      if (!layerReady) return; // IMPORTANT: wait until points-layer exists
-
       const filters = ["all"];
-      const tVal = typeSelect.value;
-      const cVal = countrySelect.value;
 
-      if (tVal !== "__all__") {
-        filters.push(["==", ["to-string", ["get", FIELD_TYPE]], tVal]);
+      if (typeSelect.value !== "__all__") {
+        filters.push(["==", ["get", FIELD_TYPE], typeSelect.value]);
       }
-      if (cVal !== "__all__") {
-        filters.push(["==", ["to-string", ["get", FIELD_COUNTRY]], cVal]);
+
+      if (countrySelect.value !== "__all__") {
+        filters.push(["==", ["get", FIELD_COUNTRY], countrySelect.value]);
       }
 
       map.setFilter("points-layer", filters.length > 1 ? filters : null);
@@ -242,14 +262,14 @@
       const res = await fetch(GEOJSON_FILE);
       geojson = await res.json();
 
-      // Build dropdown values (trimmed)
+      // Build dropdown values
       const types = new Set();
       const countries = new Set();
 
       geojson.features.forEach(f => {
         const p = f.properties || {};
-        if (p[FIELD_TYPE]) types.add(norm(p[FIELD_TYPE]));
-        if (p[FIELD_COUNTRY]) countries.add(norm(p[FIELD_COUNTRY]));
+        if (p[FIELD_TYPE]) types.add(p[FIELD_TYPE]);
+        if (p[FIELD_COUNTRY]) countries.add(p[FIELD_COUNTRY]);
       });
 
       [...types].sort().forEach(v => {
@@ -287,16 +307,13 @@
             }
           });
 
-          // Layer is ready ONLY after addLayer succeeds
-          layerReady = true;
-
-          // Wire events after layer exists
+          // After layer exists, wire events
           map.on("click", "points-layer", e => {
             const p = e.features[0].properties || {};
             const html = `
               <div class="popup-content">
                 ${Object.entries(p)
-                  .slice(5, 67)
+                  .slice(7, 67)
                   .map(([k, v]) => `<div><b>${k}</b>: ${v}</div>`)
                   .join("")}
               </div>`;
@@ -308,9 +325,6 @@
 
           map.on("mouseenter", "points-layer", () => { map.getCanvas().style.cursor = "pointer"; });
           map.on("mouseleave", "points-layer", () => { map.getCanvas().style.cursor = ""; });
-
-          // Now that layer exists, apply the initial (All/All) filter and stats safely
-          applyFilters({ fitToFiltered: false });
         }
       );
 
@@ -318,7 +332,7 @@
       allBounds = computeBounds(geojson.features);
       fitAllPoints();
 
-      // Initial stats (no filters yet)
+      // Initial stats
       updateStats(geojson.features.length, geojson.features.length);
 
       // Filter behaviour
