@@ -10,7 +10,6 @@
 
   <style>
     :root { --sidebar-w: 350px; }
-
     body { margin: 0; font-family: sans-serif; background: #f5f5f5; }
 
     .app {
@@ -107,7 +106,7 @@
     #map { width: 100%; height: 100%; }
 
     .popup-content {
-      max-height: 240px;
+      max-height: 260px;
       overflow-y: auto;
       overflow-x: hidden;
       font-size: 12px;
@@ -126,7 +125,7 @@
   <div class="app">
     <aside class="sidebar">
       <h1>Energy Geostructures</h1>
-      <p class="hint">Tick types to show/hide them. Filter by country. Click a point to see attributes.</p>
+      <p class="hint">Tick categories to show/hide them. Filter by country. Click a point to see attributes.</p>
 
       <label for="countrySelect">Filter by Country</label>
       <select id="countrySelect">
@@ -159,7 +158,7 @@
     let allBounds;
     let layerReady = false;
 
-    // --- Fields in your GeoJSON (must match exactly) ---
+    // Your GeoJSON fields (unchanged)
     const FIELD_TYPE = "Type";
     const FIELD_COUNTRY = "Installation type - Country";
     const GEOJSON_FILE = "./data.geojson";
@@ -170,69 +169,58 @@
     const statsBox = document.getElementById("statsBox");
     const typeLegendEl = document.getElementById("typeLegend");
 
-    // --- Your fixed Type categories + colours ---
-    const TYPE_CONFIG = [
-      { label: "Energy Barrettes",         color: "#6A1B9A" },
-      { label: "Energy Anchors",           color: "#C62828" },
-      { label: "Energy Slabs",             color: "#2E7D32" },
-      { label: "Energy Sheet Pile Walls",  color: "#8E24AA" },
-      { label: "Geothermal Pavements",     color: "#EF6C00" },
-      { label: "Energy Piles",             color: "#1565C0" },
-      { label: "Energy Tunnels",           color: "#00838F" },
-      { label: "Energy Retaining Walls",   color: "#6D4C41" }
+    function norm(v) { return String(v ?? "").trim(); }
+
+    // ========= IMPORTANT: UI label -> EXISTING DATA values =========
+    // Replace the dataValues arrays with your CURRENT Type strings.
+    const TYPE_UI = [
+      { label: "Energy Barrettes",        color: "#6A1B9A", dataValues: ["Barrettes trasp"] },
+      { label: "Energy Anchors",          color: "#C62828", dataValues: ["Energy Anchors"] },
+      { label: "Energy Slabs",            color: "#2E7D32", dataValues: ["Energy Slab"] },
+      { label: "Energy Sheet Pile Walls", color: "#8E24AA", dataValues: ["Energy sheet pile walls trasp"] },
+      { label: "Geothermal Pavements",    color: "#EF6C00", dataValues: ["Geothermal pavements"] },
+      { label: "Energy Piles",            color: "#1565C0", dataValues: ["Piles trasp"] },
+      { label: "Energy Tunnels",          color: "#00838F", dataValues: ["Tunnels trasp"] },
+      { label: "Energy Retaining Walls",  color: "#6D4C41", dataValues: ["Walls trasp"] }
     ];
 
-    const TYPE_SET = new Set(TYPE_CONFIG.map(t => t.label));
-
-    function norm(s) {
-      return String(s ?? "").trim();
+    // Build a lookup: raw Type value -> colour (for drawing points)
+    const TYPE_TO_COLOR = new Map();
+    for (const ui of TYPE_UI) {
+      for (const dv of ui.dataValues) TYPE_TO_COLOR.set(norm(dv), ui.color);
     }
 
-    // Normalise common variants from your data into the fixed labels above
-    function normaliseType(raw) {
-      const v = norm(raw);
-      if (!v) return v;
-
-      const low = v.toLowerCase().replace(/\s+/g, " ").trim();
-
-      // direct exact match
-      for (const t of TYPE_CONFIG) {
-        if (low === t.label.toLowerCase()) return t.label;
-      }
-
-      // common variants -> standard
-      if (low === "energy slab" || low === "energy slabs") return "Energy Slabs";
-      if (low === "energy sheet pile wall" || low === "energy sheet pile walls") return "Energy Sheet Pile Walls";
-      if (low === "energy sheet-pile walls" || low === "energy sheet-pile wall") return "Energy Sheet Pile Walls";
-      if (low === "geothermal pavement" || low === "geothermal pavements") return "Geothermal Pavements";
-      if (low === "energy pile" || low === "energy piles") return "Energy Piles";
-      if (low === "energy tunnel" || low === "energy tunnels") return "Energy Tunnels";
-      if (low === "energy barrette" || low === "energy barrettes") return "Energy Barrettes";
-      if (low === "energy anchor" || low === "energy anchors") return "Energy Anchors";
-      if (low === "energy retaining wall" || low === "energy retaining walls") return "Energy Retaining Walls";
-
-      // If data has something unexpected, keep it (it just won't be in the fixed legend)
-      return v;
-    }
-
+    // Legend UI
     function buildTypeLegend() {
       typeLegendEl.innerHTML = "";
-
-      for (const t of TYPE_CONFIG) {
+      for (const ui of TYPE_UI) {
         const row = document.createElement("label");
         row.className = "legend-item";
         row.innerHTML = `
-          <input type="checkbox" class="typeCheck" value="${t.label}" checked />
-          <span class="legend-swatch" style="background:${t.color}"></span>
-          <span>${t.label}</span>
+          <input type="checkbox" class="typeCheck" value="${ui.label}" checked />
+          <span class="legend-swatch" style="background:${ui.color}"></span>
+          <span>${ui.label}</span>
         `;
         typeLegendEl.appendChild(row);
       }
     }
 
-    function getSelectedTypes() {
-      const checks = Array.from(document.querySelectorAll(".typeCheck"));
-      return checks.filter(c => c.checked).map(c => c.value);
+    function getSelectedUILabels() {
+      return Array.from(document.querySelectorAll(".typeCheck"))
+        .filter(c => c.checked)
+        .map(c => c.value);
+    }
+
+    // Convert selected UI labels -> allowed raw Type values
+    function getAllowedTypeValuesFromUI() {
+      const selected = new Set(getSelectedUILabels());
+      const allowed = [];
+      for (const ui of TYPE_UI) {
+        if (selected.has(ui.label)) {
+          ui.dataValues.forEach(v => allowed.push(norm(v)));
+        }
+      }
+      return allowed;
     }
 
     const map = new mapboxgl.Map({
@@ -243,10 +231,7 @@
       projection: "mercator"
     });
 
-    map.on("style.load", () => {
-      map.setProjection("mercator");
-    });
-
+    map.on("style.load", () => map.setProjection("mercator"));
     map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-right");
 
     // Flat 2D, no rotation
@@ -261,7 +246,7 @@
     map.scrollZoom.enable();
     map.doubleClickZoom.enable();
     map.keyboard.enable();
-    map.touchZoomRotate.enable(); // pinch zoom OK, rotation stays disabled
+    map.touchZoomRotate.enable(); // pinch zoom OK
 
     function computeBounds(features) {
       const b = new mapboxgl.LngLatBounds();
@@ -274,41 +259,38 @@
     function currentFilteredFeatures() {
       if (!geojson?.features) return [];
       const c = countrySelect.value;
-      const selectedTypes = new Set(getSelectedTypes());
+      const allowedTypes = new Set(getAllowedTypeValuesFromUI());
 
       return geojson.features.filter(f => {
         if (f?.geometry?.type !== "Point") return false;
         const p = f.properties || {};
-
         const okCountry = (c === "__all__") || (norm(p[FIELD_COUNTRY]) === norm(c));
-        const tClean = norm(p.Type_clean);
-        const okType = selectedTypes.size === 0 ? false : selectedTypes.has(tClean);
-
+        const okType = allowedTypes.size > 0 && allowedTypes.has(norm(p[FIELD_TYPE]));
         return okCountry && okType;
       });
     }
 
     function updateStats(filteredCount, totalCount) {
       const c = countrySelect.value === "__all__" ? "All" : countrySelect.value;
-      const selectedTypes = getSelectedTypes();
+      const selected = getSelectedUILabels().length;
       statsBox.innerHTML = `
         <div><b>Total points:</b> ${totalCount}</div>
         <div><b>Visible points:</b> ${filteredCount}</div>
         <div><b>Country:</b> ${c}</div>
-        <div><b>Selected types:</b> ${selectedTypes.length} / ${TYPE_CONFIG.length}</div>
+        <div><b>Selected types:</b> ${selected} / ${TYPE_UI.length}</div>
       `;
     }
 
     function applyFilters({ fitToFiltered = false } = {}) {
       if (!layerReady) return;
 
-      const selectedTypes = getSelectedTypes();
       const cVal = countrySelect.value;
+      const allowedTypes = getAllowedTypeValuesFromUI();
 
-      // If no types ticked, show nothing
-      const typeFilter = (selectedTypes.length === 0)
-        ? ["==", ["get", "Type_clean"], "__none__"]
-        : ["in", ["get", "Type_clean"], ["literal", selectedTypes]];
+      // If none selected, show nothing
+      const typeFilter = (allowedTypes.length === 0)
+        ? ["==", ["get", FIELD_TYPE], "__none__"]
+        : ["in", ["to-string", ["get", FIELD_TYPE]], ["literal", allowedTypes]];
 
       const filters = ["all", typeFilter];
 
@@ -333,29 +315,13 @@
       }
     }
 
-    // Build the legend UI now
     buildTypeLegend();
 
     map.on("load", async () => {
       const res = await fetch(GEOJSON_FILE);
       geojson = await res.json();
 
-      // Normalise Type into a new property: Type_clean
-      const unknownTypes = new Set();
-      for (const f of geojson.features) {
-        const p = f.properties || {};
-        const cleaned = normaliseType(p[FIELD_TYPE]);
-        p.Type_clean = cleaned;
-
-        // Track types not in your fixed list (optional debug)
-        if (cleaned && !TYPE_SET.has(cleaned)) unknownTypes.add(cleaned);
-        f.properties = p;
-      }
-      if (unknownTypes.size > 0) {
-        console.warn("Types found in data not in the fixed legend list:", [...unknownTypes]);
-      }
-
-      // Populate Country dropdown from data
+      // Build Country dropdown from data
       const countries = new Set();
       geojson.features.forEach(f => {
         const p = f.properties || {};
@@ -368,44 +334,36 @@
         countrySelect.appendChild(o);
       });
 
-      // Add source
       map.addSource("points", { type: "geojson", data: geojson });
 
-      // Build icon-color expression based on Type_clean
-      const colorMatch = ["match", ["get", "Type_clean"]];
-      for (const t of TYPE_CONFIG) {
-        colorMatch.push(t.label, t.color);
+      // Colour circles by raw Type value (using your mapping)
+      // If a Type value isn't in the mapping, it will be grey.
+      const colorMatch = ["match", ["to-string", ["get", FIELD_TYPE]]];
+      for (const [k, col] of TYPE_TO_COLOR.entries()) {
+        colorMatch.push(k, col);
       }
-      colorMatch.push("#666666"); // fallback colour
+      colorMatch.push("#757575");
 
-      // Add symbol layer using built-in marker icon (colourable)
       map.addLayer({
         id: "points-layer",
-        type: "symbol",
+        type: "circle",
         source: "points",
-        layout: {
-          "icon-image": "marker-15",
-          "icon-size": 1.1,
-          "icon-allow-overlap": true
-        },
         paint: {
-          "icon-color": colorMatch,
-          "icon-halo-color": "#ffffff",
-          "icon-halo-width": 1
+          "circle-radius": 6,
+          "circle-color": colorMatch,
+          "circle-stroke-color": "#ffffff",
+          "circle-stroke-width": 1
         }
       });
 
       layerReady = true;
 
-      // Cache bounds and fit initial view
       allBounds = computeBounds(geojson.features);
       fitAllPoints();
 
-      // Initial stats + filters
       updateStats(geojson.features.length, geojson.features.length);
       applyFilters({ fitToFiltered: false });
 
-      // Popup
       map.on("click", "points-layer", e => {
         const p = e.features[0].properties || {};
         const html = `
@@ -427,7 +385,6 @@
       // Events
       countrySelect.addEventListener("change", () => applyFilters({ fitToFiltered: true }));
 
-      // When any checkbox changes
       document.querySelectorAll(".typeCheck").forEach(cb => {
         cb.addEventListener("change", () => applyFilters({ fitToFiltered: false }));
       });
