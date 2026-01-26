@@ -26,6 +26,46 @@
       padding: 12px;
       overflow: auto;
     }
+    .sidebar h1 { font-size: 16px; margin: 0 0 8px; }
+    .sidebar .hint { font-size: 12px; color: #555; margin: 0 0 12px; line-height: 1.35; }
+    .sidebar label { display: block; margin: 10px 0 4px; font-size: 12px; }
+    .sidebar select {
+      width: 100%;
+      padding: 6px;
+      border-radius: 8px;
+      border: 1px solid #ddd;
+      background: #fff;
+    }
+    .legend {
+      margin-top: 10px;
+      border: 1px solid #eee;
+      border-radius: 10px;
+      padding: 10px;
+      background: #fafafa;
+    }
+    .legend-title {
+      font-weight: 700;
+      font-size: 12px;
+      margin-bottom: 8px;
+      letter-spacing: 0.3px;
+      color: #222;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 6px 0;
+      font-size: 12px;
+      color: #222;
+      user-select: none;
+    }
+    .legend-swatch {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      border: 1px solid rgba(0,0,0,0.25);
+    }
+    .btnrow { display: flex; gap: 8px; margin-top: 12px; }
     .map-panel {
       background: #fff;
       border-radius: 12px;
@@ -33,6 +73,7 @@
       overflow: hidden;
     }
     #map { width: 100%; height: 100%; }
+    .popup-content { max-height: 260px; overflow-y: auto; font-size: 12px; }
   </style>
 </head>
 
@@ -40,18 +81,24 @@
 <div class="app">
   <aside class="sidebar">
     <h1>Energy Geostructures</h1>
+    <p class="hint">Tick categories to show/hide them. Filter by country. Click a point to see attributes.</p>
 
-    <label for="countrySelect">Filter by Country</label>
+    <label>Filter by Country</label>
     <select id="countrySelect">
       <option value="__all__">All</option>
     </select>
 
-    <div id="typeLegend"></div>
+    <div class="legend">
+      <div class="legend-title">TYPES</div>
+      <div id="typeLegend"></div>
+    </div>
 
-    <button id="resetBtn">Reset</button>
-    <button id="fitAllBtn">Fit all</button>
+    <div class="btnrow">
+      <button id="resetBtn">Reset filters</button>
+      <button id="fitAllBtn">Fit all points</button>
+    </div>
 
-    <div id="statsBox"></div>
+    <div class="stats" id="statsBox">Loading…</div>
   </aside>
 
   <main class="map-panel">
@@ -66,99 +113,77 @@ const FIELD_TYPE = "Type";
 const FIELD_COUNTRY = "Installation type - Country";
 const GEOJSON_FILE = "./data.geojson";
 
-/* ================= TYPE CONFIG ================= */
+function norm(v){ return String(v ?? "").trim(); }
+
+// ===== UI TYPES =====
 const TYPE_UI = [
-  { label: "Energy Barrettes",        dataValues: ["Barrettes trasp"],              marker: "purple" },
-  { label: "Energy Anchors",          dataValues: ["Energy Anchors"],               marker: "red" },
-  { label: "Energy Slabs",            dataValues: ["Energy Slab"],                  marker: "green" },
-  { label: "Energy Sheet Pile Walls", dataValues: ["Energy sheet pile walls trasp"], marker: "purple" },
-  { label: "Geothermal Pavements",    dataValues: ["Geothermal pavements"],         marker: "orange" },
-  { label: "Energy Piles",            dataValues: ["Piles trasp"],                  marker: "blue" },
-  { label: "Energy Tunnels",          dataValues: ["Tunnels trasp"],                marker: "teal" },
-  { label: "Energy Retaining Walls",  dataValues: ["Walls trasp"],                  marker: "brown" }
+  { label:"Energy Barrettes", color:"#6A1B9A", dataValues:["Barrettes trasp"], marker:"marker-purple" },
+  { label:"Energy Anchors", color:"#C62828", dataValues:["Energy Anchors"], marker:"marker-red" },
+  { label:"Energy Slabs", color:"#2E7D32", dataValues:["Energy Slab"], marker:"marker-green" },
+  { label:"Energy Sheet Pile Walls", color:"#8E24AA", dataValues:["Energy sheet pile walls trasp"], marker:"marker-purple" },
+  { label:"Geothermal Pavements", color:"#EF6C00", dataValues:["Geothermal pavements"], marker:"marker-orange" },
+  { label:"Energy Piles", color:"#1565C0", dataValues:["Piles trasp"], marker:"marker-blue" },
+  { label:"Energy Tunnels", color:"#00838F", dataValues:["Tunnels trasp"], marker:"marker-teal" },
+  { label:"Energy Retaining Walls", color:"#6D4C41", dataValues:["Walls trasp"], marker:"marker-brown" }
 ];
 
-function norm(v) { return String(v ?? "").trim(); }
-
-/* ================= MAP INIT ================= */
+// ===== MAP =====
 const map = new mapboxgl.Map({
-  container: "map",
-  style: "mapbox://styles/mapbox/streets-v12",
-  center: [0, 20],
-  zoom: 1.2,
-  projection: "mercator"
+  container:"map",
+  style:"mapbox://styles/mapbox/streets-v12",
+  center:[0,20],
+  zoom:1.2,
+  projection:"mercator"
 });
 
-map.addControl(new mapboxgl.NavigationControl({ showCompass: false }));
-
-/* ================= LOAD DATA & MARKERS ================= */
 map.on("load", async () => {
-  const geojson = await fetch(GEOJSON_FILE).then(r => r.json());
 
-  map.addSource("points", { type: "geojson", data: geojson });
-
-  /* ---------- Load marker images ---------- */
-  const markerFiles = {
-    purple: "./markers/purple.png",
-    red: "./markers/red.png",
-    green: "./markers/green.png",
-    blue: "./markers/blue.png",
-    orange: "./markers/orange.png",
-    teal: "./markers/teal.png",
-    brown: "./markers/brown.png",
-    grey: "./markers/grey.png"
+  // ---- Load marker images ----
+  const markerImages = {
+    "marker-purple":"./markers/marker-purple.png",
+    "marker-red":"./markers/marker-red.png",
+    "marker-green":"./markers/marker-green.png",
+    "marker-orange":"./markers/marker-orange.png",
+    "marker-blue":"./markers/marker-blue.png",
+    "marker-teal":"./markers/marker-teal.png",
+    "marker-brown":"./markers/marker-brown.png",
+    "marker-grey":"./markers/marker-grey.png"
   };
 
   await Promise.all(
-    Object.entries(markerFiles).map(([name, url]) =>
-      new Promise((resolve, reject) => {
-        map.loadImage(url, (err, img) => {
-          if (err) reject(err);
-          if (!map.hasImage(name)) map.addImage(name, img);
-          resolve();
+    Object.entries(markerImages).map(([name,url]) =>
+      new Promise((res,rej)=>{
+        map.loadImage(url,(e,img)=>{
+          if(e) rej(e);
+          if(!map.hasImage(name)) map.addImage(name,img);
+          res();
         });
       })
     )
   );
 
-  /* ---------- Build icon match expression ---------- */
+  const geojson = await fetch(GEOJSON_FILE).then(r=>r.json());
+  map.addSource("points",{ type:"geojson", data:geojson });
+
+  // ---- Build icon-image match ----
   const iconMatch = ["match", ["to-string", ["get", FIELD_TYPE]]];
-
-  TYPE_UI.forEach(ui => {
-    ui.dataValues.forEach(v => iconMatch.push(norm(v), ui.marker));
+  TYPE_UI.forEach(ui=>{
+    ui.dataValues.forEach(v=> iconMatch.push(norm(v), ui.marker));
   });
+  iconMatch.push("marker-grey");
 
-  iconMatch.push("grey"); // fallback
-
-  /* ---------- ADD LAYER ---------- */
+  // ---- SYMBOL LAYER (colored markers) ----
   map.addLayer({
-    id: "points-layer",
-    type: "symbol",
-    source: "points",
-    layout: {
+    id:"points-layer",
+    type:"symbol",
+    source:"points",
+    layout:{
       "icon-image": iconMatch,
       "icon-size": 0.6,
       "icon-anchor": "bottom",
       "icon-allow-overlap": true
     }
   });
-
-  /* ---------- Filters (unchanged logic) ---------- */
-  document.getElementById("countrySelect").addEventListener("change", e => {
-    const val = e.target.value;
-    map.setFilter(
-      "points-layer",
-      val === "__all__"
-        ? null
-        : ["==", ["to-string", ["get", FIELD_COUNTRY]], val]
-    );
-  });
-
-  document.getElementById("fitAllBtn").onclick = () => {
-    const b = new mapboxgl.LngLatBounds();
-    geojson.features.forEach(f => b.extend(f.geometry.coordinates));
-    map.fitBounds(b, { padding: 60 });
-  };
 });
 </script>
 </body>
