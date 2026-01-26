@@ -346,13 +346,17 @@
 
       map.addLayer({
         id: "points-layer",
-        type: "circle",
+        type: "symbol",
         source: "points",
+        layout: {
+          "icon-image": "marker-15",
+          "icon-size": 1.2,
+          "icon-allow-overlap": true
+        },
         paint: {
-          "circle-radius": 6,
-          "circle-color": colorMatch,
-          "circle-stroke-color": "#ffffff",
-          "circle-stroke-width": 1
+          "icon-color": colorMatch,
+          "icon-halo-color": "#ffffff",
+          "icon-halo-width": 1
         }
       });
 
@@ -401,3 +405,4 @@
   </script>
 </body>
 </html>
+
