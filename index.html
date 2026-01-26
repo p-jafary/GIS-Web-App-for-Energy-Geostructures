@@ -11,6 +11,7 @@
   <style>
     :root { --sidebar-w: 350px; }
     body { margin: 0; font-family: sans-serif; background: #f5f5f5; }
+
     .app {
       height: 100vh;
       display: grid;
@@ -19,6 +20,7 @@
       padding: 12px;
       box-sizing: border-box;
     }
+
     .sidebar {
       background: #fff;
       border-radius: 12px;
@@ -26,9 +28,11 @@
       padding: 12px;
       overflow: auto;
     }
+
     .sidebar h1 { font-size: 16px; margin: 0 0 8px; }
     .sidebar .hint { font-size: 12px; color: #555; margin: 0 0 12px; line-height: 1.35; }
     .sidebar label { display: block; margin: 10px 0 4px; font-size: 12px; }
+
     .sidebar select {
       width: 100%;
       padding: 6px;
@@ -36,6 +40,7 @@
       border: 1px solid #ddd;
       background: #fff;
     }
+
     .legend {
       margin-top: 10px;
       border: 1px solid #eee;
@@ -59,132 +64,364 @@
       color: #222;
       user-select: none;
     }
+    .legend-item input { transform: translateY(1px); }
     .legend-swatch {
       width: 10px;
       height: 10px;
       border-radius: 50%;
       border: 1px solid rgba(0,0,0,0.25);
+      flex: 0 0 auto;
     }
-    .btnrow { display: flex; gap: 8px; margin-top: 12px; }
+
+    .sidebar .btnrow { display: flex; gap: 8px; margin-top: 12px; }
+    .sidebar button {
+      flex: 1;
+      padding: 8px;
+      border-radius: 10px;
+      border: 1px solid #ddd;
+      background: #fafafa;
+      cursor: pointer;
+    }
+    .sidebar button:hover { background: #f0f0f0; }
+
+    .stats {
+      margin-top: 12px;
+      font-size: 12px;
+      color: #333;
+      padding: 10px;
+      border: 1px dashed #ddd;
+      border-radius: 10px;
+      background: #fcfcfc;
+    }
+
     .map-panel {
       background: #fff;
       border-radius: 12px;
       box-shadow: 0 2px 12px rgba(0,0,0,0.12);
       overflow: hidden;
+      position: relative;
     }
+
     #map { width: 100%; height: 100%; }
-    .popup-content { max-height: 260px; overflow-y: auto; font-size: 12px; }
+
+    .popup-content {
+      max-height: 260px;
+      overflow-y: auto;
+      overflow-x: hidden;
+      font-size: 12px;
+    }
+
+    .mapboxgl-ctrl-top-right { top: 10px; right: 10px; }
+
+    @media (max-width: 900px) {
+      .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+      :root { --sidebar-w: 100%; }
+    }
   </style>
 </head>
 
 <body>
-<div class="app">
-  <aside class="sidebar">
-    <h1>Energy Geostructures</h1>
-    <p class="hint">Tick categories to show/hide them. Filter by country. Click a point to see attributes.</p>
+  <div class="app">
+    <aside class="sidebar">
+      <h1>Energy Geostructures</h1>
+      <p class="hint">Tick categories to show/hide them. Filter by country. Click a point to see attributes.</p>
 
-    <label>Filter by Country</label>
-    <select id="countrySelect">
-      <option value="__all__">All</option>
-    </select>
+      <label for="countrySelect">Filter by Country</label>
+      <select id="countrySelect">
+        <option value="__all__">All</option>
+      </select>
 
-    <div class="legend">
-      <div class="legend-title">TYPES</div>
-      <div id="typeLegend"></div>
-    </div>
+      <div class="legend">
+        <div class="legend-title">TYPES</div>
+        <div id="typeLegend"></div>
+      </div>
 
-    <div class="btnrow">
-      <button id="resetBtn">Reset filters</button>
-      <button id="fitAllBtn">Fit all points</button>
-    </div>
+      <div class="btnrow">
+        <button id="resetBtn" type="button">Reset filters</button>
+        <button id="fitAllBtn" type="button">Fit all points</button>
+      </div>
 
-    <div class="stats" id="statsBox">Loading…</div>
-  </aside>
+      <div class="stats" id="statsBox">Loading data…</div>
+    </aside>
 
-  <main class="map-panel">
-    <div id="map"></div>
-  </main>
-</div>
+    <main class="map-panel">
+      <div id="map"></div>
+    </main>
+  </div>
 
-<script>
-mapboxgl.accessToken = "pk.eyJ1IjoicGphZmFyeSIsImEiOiJjbWttMnB1cWgwYm9yM2VvcjBsaDVjZjZ6In0.4hnFagy7O71f_AJTMS1guQ";
+  <script>
+    mapboxgl.accessToken =
+      "pk.eyJ1IjoicGphZmFyeSIsImEiOiJjbWttMnB1cWgwYm9yM2VvcjBsaDVjZjZ6In0.4hnFagy7O71f_AJTMS1guQ";
 
-const FIELD_TYPE = "Type";
-const FIELD_COUNTRY = "Installation type - Country";
-const GEOJSON_FILE = "./data.geojson";
+    let geojson;
+    let allBounds;
+    let layersReady = false; // we only enable filters after BOTH layers exist
 
-function norm(v){ return String(v ?? "").trim(); }
+    // GeoJSON fields
+    const FIELD_TYPE = "Type";
+    const FIELD_COUNTRY = "Installation type - Country";
+    const GEOJSON_FILE = "./data.geojson";
 
-// ===== UI TYPES =====
-const TYPE_UI = [
-  { label:"Energy Barrettes", color:"#6A1B9A", dataValues:["Barrettes trasp"], marker:"marker-purple" },
-  { label:"Energy Anchors", color:"#C62828", dataValues:["Energy Anchors"], marker:"marker-red" },
-  { label:"Energy Slabs", color:"#2E7D32", dataValues:["Energy Slab"], marker:"marker-green" },
-  { label:"Energy Sheet Pile Walls", color:"#8E24AA", dataValues:["Energy sheet pile walls trasp"], marker:"marker-purple" },
-  { label:"Geothermal Pavements", color:"#EF6C00", dataValues:["Geothermal pavements"], marker:"marker-orange" },
-  { label:"Energy Piles", color:"#1565C0", dataValues:["Piles trasp"], marker:"marker-blue" },
-  { label:"Energy Tunnels", color:"#00838F", dataValues:["Tunnels trasp"], marker:"marker-teal" },
-  { label:"Energy Retaining Walls", color:"#6D4C41", dataValues:["Walls trasp"], marker:"marker-brown" }
-];
+    const countrySelect = document.getElementById("countrySelect");
+    const resetBtn = document.getElementById("resetBtn");
+    const fitAllBtn = document.getElementById("fitAllBtn");
+    const statsBox = document.getElementById("statsBox");
+    const typeLegendEl = document.getElementById("typeLegend");
 
-// ===== MAP =====
-const map = new mapboxgl.Map({
-  container:"map",
-  style:"mapbox://styles/mapbox/streets-v12",
-  center:[0,20],
-  zoom:1.2,
-  projection:"mercator"
-});
+    function norm(v) { return String(v ?? "").trim(); }
 
-map.on("load", async () => {
+    // UI label -> existing Type values in your data
+    const TYPE_UI = [
+      { label: "Energy Barrettes",        color: "#6A1B9A", dataValues: ["Barrettes trasp"] },
+      { label: "Energy Anchors",          color: "#C62828", dataValues: ["Energy Anchors"] },
+      { label: "Energy Slabs",            color: "#2E7D32", dataValues: ["Energy Slab"] },
+      { label: "Energy Sheet Pile Walls", color: "#8E24AA", dataValues: ["Energy sheet pile walls trasp"] },
+      { label: "Geothermal Pavements",    color: "#EF6C00", dataValues: ["Geothermal pavements"] },
+      { label: "Energy Piles",            color: "#1565C0", dataValues: ["Piles trasp"] },
+      { label: "Energy Tunnels",          color: "#00838F", dataValues: ["Tunnels trasp"] },
+      { label: "Energy Retaining Walls",  color: "#6D4C41", dataValues: ["Walls trasp"] }
+    ];
 
-  // ---- Load marker images ----
-  const markerImages = {
-    "marker-purple":"./markers/marker-purple.png",
-    "marker-red":"./markers/marker-red.png",
-    "marker-green":"./markers/marker-green.png",
-    "marker-orange":"./markers/marker-orange.png",
-    "marker-blue":"./markers/marker-blue.png",
-    "marker-teal":"./markers/marker-teal.png",
-    "marker-brown":"./markers/marker-brown.png",
-    "marker-grey":"./markers/marker-grey.png"
-  };
-
-  await Promise.all(
-    Object.entries(markerImages).map(([name,url]) =>
-      new Promise((res,rej)=>{
-        map.loadImage(url,(e,img)=>{
-          if(e) rej(e);
-          if(!map.hasImage(name)) map.addImage(name,img);
-          res();
-        });
-      })
-    )
-  );
-
-  const geojson = await fetch(GEOJSON_FILE).then(r=>r.json());
-  map.addSource("points",{ type:"geojson", data:geojson });
-
-  // ---- Build icon-image match ----
-  const iconMatch = ["match", ["to-string", ["get", FIELD_TYPE]]];
-  TYPE_UI.forEach(ui=>{
-    ui.dataValues.forEach(v=> iconMatch.push(norm(v), ui.marker));
-  });
-  iconMatch.push("marker-grey");
-
-  // ---- SYMBOL LAYER (colored markers) ----
-  map.addLayer({
-    id:"points-layer",
-    type:"symbol",
-    source:"points",
-    layout:{
-      "icon-image": iconMatch,
-      "icon-size": 0.6,
-      "icon-anchor": "bottom",
-      "icon-allow-overlap": true
+    // Lookup: raw Type -> colour
+    const TYPE_TO_COLOR = new Map();
+    for (const ui of TYPE_UI) {
+      for (const dv of ui.dataValues) TYPE_TO_COLOR.set(norm(dv), ui.color);
     }
-  });
-});
-</script>
+
+    function buildTypeLegend() {
+      typeLegendEl.innerHTML = "";
+      for (const ui of TYPE_UI) {
+        const row = document.createElement("label");
+        row.className = "legend-item";
+        row.innerHTML = `
+          <input type="checkbox" class="typeCheck" value="${ui.label}" checked />
+          <span class="legend-swatch" style="background:${ui.color}"></span>
+          <span>${ui.label}</span>
+        `;
+        typeLegendEl.appendChild(row);
+      }
+    }
+
+    function getSelectedUILabels() {
+      return Array.from(document.querySelectorAll(".typeCheck"))
+        .filter(c => c.checked)
+        .map(c => c.value);
+    }
+
+    function getAllowedTypeValuesFromUI() {
+      const selected = new Set(getSelectedUILabels());
+      const allowed = [];
+      for (const ui of TYPE_UI) {
+        if (selected.has(ui.label)) {
+          ui.dataValues.forEach(v => allowed.push(norm(v)));
+        }
+      }
+      return allowed;
+    }
+
+    const map = new mapboxgl.Map({
+      container: "map",
+      style: "mapbox://styles/mapbox/streets-v12",
+      center: [0, 20],
+      zoom: 1.2,
+      projection: "mercator"
+    });
+
+    map.on("style.load", () => map.setProjection("mercator"));
+    map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-right");
+
+    // Flat 2D, no rotation
+    map.dragRotate.disable();
+    map.touchZoomRotate.disableRotation();
+    map.keyboard.disableRotation();
+    map.setPitch(0);
+    map.setBearing(0);
+    map.setMaxPitch(0);
+
+    // Zoom allowed
+    map.scrollZoom.enable();
+    map.doubleClickZoom.enable();
+    map.keyboard.enable();
+    map.touchZoomRotate.enable(); // pinch zoom OK
+
+    function computeBounds(features) {
+      const b = new mapboxgl.LngLatBounds();
+      for (const f of features) {
+        if (f?.geometry?.type === "Point") b.extend(f.geometry.coordinates);
+      }
+      return b;
+    }
+
+    function currentFilteredFeatures() {
+      if (!geojson?.features) return [];
+      const c = countrySelect.value;
+      const allowedTypes = new Set(getAllowedTypeValuesFromUI());
+
+      return geojson.features.filter(f => {
+        if (f?.geometry?.type !== "Point") return false;
+        const p = f.properties || {};
+        const okCountry = (c === "__all__") || (norm(p[FIELD_COUNTRY]) === norm(c));
+        const okType = allowedTypes.size > 0 && allowedTypes.has(norm(p[FIELD_TYPE]));
+        return okCountry && okType;
+      });
+    }
+
+    function updateStats(filteredCount, totalCount) {
+      const c = countrySelect.value === "__all__" ? "All" : countrySelect.value;
+      const selected = getSelectedUILabels().length;
+      statsBox.innerHTML = `
+        <div><b>Total points:</b> ${totalCount}</div>
+        <div><b>Visible points:</b> ${filteredCount}</div>
+        <div><b>Country:</b> ${c}</div>
+        <div><b>Selected types:</b> ${selected} / ${TYPE_UI.length}</div>
+      `;
+    }
+
+    function applyFilters({ fitToFiltered = false } = {}) {
+      if (!layersReady) return;
+
+      const cVal = countrySelect.value;
+      const allowedTypes = getAllowedTypeValuesFromUI();
+
+      const typeFilter = (allowedTypes.length === 0)
+        ? ["==", ["get", FIELD_TYPE], "__none__"]
+        : ["in", ["to-string", ["get", FIELD_TYPE]], ["literal", allowedTypes]];
+
+      const filters = ["all", typeFilter];
+
+      if (cVal !== "__all__") {
+        filters.push(["==", ["to-string", ["get", FIELD_COUNTRY]], cVal]);
+      }
+
+      // Apply filters to BOTH layers
+      map.setFilter("points-color", filters);
+      map.setFilter("points-icon", filters);
+
+      const filtered = currentFilteredFeatures();
+      updateStats(filtered.length, geojson?.features?.length || 0);
+
+      if (fitToFiltered && filtered.length > 0) {
+        const b = computeBounds(filtered);
+        if (!b.isEmpty()) map.fitBounds(b, { padding: 60, maxZoom: 6 });
+      }
+    }
+
+    function fitAllPoints() {
+      if (allBounds && !allBounds.isEmpty()) {
+        map.fitBounds(allBounds, { padding: 50, maxZoom: 4 });
+      }
+    }
+
+    buildTypeLegend();
+
+    map.on("load", async () => {
+      const res = await fetch(GEOJSON_FILE);
+      geojson = await res.json();
+
+      // Country dropdown
+      const countries = new Set();
+      geojson.features.forEach(f => {
+        const p = f.properties || {};
+        const v = norm(p[FIELD_COUNTRY]);
+        if (v) countries.add(v);
+      });
+      [...countries].sort().forEach(v => {
+        const o = document.createElement("option");
+        o.value = v; o.textContent = v;
+        countrySelect.appendChild(o);
+      });
+
+      map.addSource("points", { type: "geojson", data: geojson });
+
+      // Colour expression by Type
+      const colorMatch = ["match", ["to-string", ["get", FIELD_TYPE]]];
+      for (const [k, col] of TYPE_TO_COLOR.entries()) {
+        colorMatch.push(k, col);
+      }
+      colorMatch.push("#757575"); // fallback
+
+      // 1) Coloured circles (for per-type colours)
+      map.addLayer({
+        id: "points-color",
+        type: "circle",
+        source: "points",
+        paint: {
+          "circle-radius": 7,
+          "circle-color": colorMatch,
+          "circle-stroke-color": "#ffffff",
+          "circle-stroke-width": 1
+        }
+      });
+
+      // 2) Marker icon on top (your previous working marker)
+      map.loadImage(
+        "https://docs.mapbox.com/mapbox-gl-js/assets/custom_marker.png",
+        (err, image) => {
+          if (err) throw err;
+
+          if (!map.hasImage("custom-marker")) map.addImage("custom-marker", image);
+
+          map.addLayer({
+            id: "points-icon",
+            type: "symbol",
+            source: "points",
+            layout: {
+              "icon-image": "custom-marker",
+              "icon-size": 0.6,
+              "icon-anchor": "bottom",
+              "icon-allow-overlap": true
+            }
+          });
+
+          // Put the icon layer above the colour dots
+          map.moveLayer("points-icon");
+
+          // Now both layers exist
+          layersReady = true;
+
+          // Fit + initial stats + initial filters
+          allBounds = computeBounds(geojson.features);
+          fitAllPoints();
+
+          updateStats(geojson.features.length, geojson.features.length);
+          applyFilters({ fitToFiltered: false });
+
+          // Popup + hover should target the TOP layer (points-icon)
+          map.on("click", "points-icon", e => {
+            const p = e.features[0].properties || {};
+            const html = `
+              <div class="popup-content">
+                ${Object.entries(p)
+                  .slice(5, 67)
+                  .map(([k, v]) => `<div><b>${k}</b>: ${v}</div>`)
+                  .join("")}
+              </div>`;
+            new mapboxgl.Popup()
+              .setLngLat(e.lngLat)
+              .setHTML(html)
+              .addTo(map);
+          });
+
+          map.on("mouseenter", "points-icon", () => { map.getCanvas().style.cursor = "pointer"; });
+          map.on("mouseleave", "points-icon", () => { map.getCanvas().style.cursor = ""; });
+        }
+      );
+
+      // Events
+      countrySelect.addEventListener("change", () => applyFilters({ fitToFiltered: true }));
+      document.querySelectorAll(".typeCheck").forEach(cb => {
+        cb.addEventListener("change", () => applyFilters({ fitToFiltered: false }));
+      });
+
+      resetBtn.addEventListener("click", () => {
+        countrySelect.value = "__all__";
+        document.querySelectorAll(".typeCheck").forEach(cb => cb.checked = true);
+        applyFilters({ fitToFiltered: false });
+        fitAllPoints();
+      });
+
+      fitAllBtn.addEventListener("click", () => fitAllPoints());
+    });
+  </script>
 </body>
 </html>
