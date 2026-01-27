@@ -11,30 +11,112 @@
   <style>
     :root { --sidebar-w: 350px; }
     body { margin: 0; font-family: sans-serif; background: #f5f5f5; }
-    .app { height: 100vh; display: grid; grid-template-columns: var(--sidebar-w) 1fr; gap: 12px; padding: 12px; box-sizing: border-box; }
-    .sidebar { background: #fff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.12); padding: 12px; overflow: auto; }
+
+    .app {
+      height: 100vh;
+      display: grid;
+      grid-template-columns: var(--sidebar-w) 1fr;
+      gap: 12px;
+      padding: 12px;
+      box-sizing: border-box;
+    }
+
+    .sidebar {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.12);
+      padding: 12px;
+      overflow: auto;
+    }
+
     .sidebar h1 { font-size: 16px; margin: 0 0 8px; }
     .sidebar .hint { font-size: 12px; color: #555; margin: 0 0 12px; line-height: 1.35; }
     .sidebar label { display: block; margin: 10px 0 4px; font-size: 12px; }
-    .sidebar select { width: 100%; padding: 6px; border-radius: 8px; border: 1px solid #ddd; background: #fff; }
 
-    .legend { margin-top: 10px; border: 1px solid #eee; border-radius: 10px; padding: 10px; background: #fafafa; }
-    .legend-title { font-weight: 700; font-size: 12px; margin-bottom: 8px; letter-spacing: 0.3px; color: #222; }
-    .legend-item { display: flex; align-items: center; gap: 8px; margin: 6px 0; font-size: 12px; color: #222; user-select: none; }
+    .sidebar select {
+      width: 100%;
+      padding: 6px;
+      border-radius: 8px;
+      border: 1px solid #ddd;
+      background: #fff;
+    }
+
+    .legend {
+      margin-top: 10px;
+      border: 1px solid #eee;
+      border-radius: 10px;
+      padding: 10px;
+      background: #fafafa;
+    }
+    .legend-title {
+      font-weight: 700;
+      font-size: 12px;
+      margin-bottom: 8px;
+      letter-spacing: 0.3px;
+      color: #222;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 6px 0;
+      font-size: 12px;
+      color: #222;
+      user-select: none;
+    }
     .legend-item input { transform: translateY(1px); }
-    .legend-swatch { width: 10px; height: 10px; border-radius: 50%; border: 1px solid rgba(0,0,0,0.25); flex: 0 0 auto; }
+    .legend-swatch {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      border: 1px solid rgba(0,0,0,0.25);
+      flex: 0 0 auto;
+    }
 
     .sidebar .btnrow { display: flex; gap: 8px; margin-top: 12px; }
-    .sidebar button { flex: 1; padding: 8px; border-radius: 10px; border: 1px solid #ddd; background: #fafafa; cursor: pointer; }
+    .sidebar button {
+      flex: 1;
+      padding: 8px;
+      border-radius: 10px;
+      border: 1px solid #ddd;
+      background: #fafafa;
+      cursor: pointer;
+    }
     .sidebar button:hover { background: #f0f0f0; }
 
-    .stats { margin-top: 12px; font-size: 12px; color: #333; padding: 10px; border: 1px dashed #ddd; border-radius: 10px; background: #fcfcfc; }
+    .stats {
+      margin-top: 12px;
+      font-size: 12px;
+      color: #333;
+      padding: 10px;
+      border: 1px dashed #ddd;
+      border-radius: 10px;
+      background: #fcfcfc;
+    }
 
-    .map-panel { background: #fff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.12); overflow: hidden; position: relative; }
+    .map-panel {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.12);
+      overflow: hidden;
+      position: relative;
+    }
+
     #map { width: 100%; height: 100%; }
-    .popup-content { max-height: 260px; overflow-y: auto; overflow-x: hidden; font-size: 12px; }
+
+    .popup-content {
+      max-height: 260px;
+      overflow-y: auto;
+      overflow-x: hidden;
+      font-size: 12px;
+    }
+
     .mapboxgl-ctrl-top-right { top: 10px; right: 10px; }
-    @media (max-width: 900px) { .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; } :root { --sidebar-w: 100%; } }
+
+    @media (max-width: 900px) {
+      .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+      :root { --sidebar-w: 100%; }
+    }
   </style>
 </head>
 
@@ -74,14 +156,13 @@
     let geojson;
     let allBounds;
     let layerReady = false;
-    let ACTIVE_LAYER_ID = null; // whichever layer we actually use (symbol or fallback circle)
 
     const FIELD_TYPE = "Type";
     const FIELD_COUNTRY = "Installation type - Country";
     const GEOJSON_FILE = "./data.geojson";
 
-    // Put your PNG here. Must be .png/.jpg/.webp for loadImage() :contentReference[oaicite:4]{index=4}
-    const ICON_URL = "./eg-marker.png";
+    // Your custom icon (upload this PNG to your server)
+    const ICON_URL = "./eg-marker.png"; 
 
     const countrySelect = document.getElementById("countrySelect");
     const resetBtn = document.getElementById("resetBtn");
@@ -142,6 +223,7 @@
     map.on("style.load", () => map.setProjection("mercator"));
     map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-right");
 
+    // Flat 2D, no rotation
     map.dragRotate.disable();
     map.touchZoomRotate.disableRotation();
     map.keyboard.disableRotation();
@@ -149,6 +231,7 @@
     map.setBearing(0);
     map.setMaxPitch(0);
 
+    // Zoom allowed
     map.scrollZoom.enable();
     map.doubleClickZoom.enable();
     map.keyboard.enable();
@@ -176,7 +259,7 @@
       });
     }
 
-    function updateStats(filteredCount, totalCount, note = "") {
+    function updateStats(filteredCount, totalCount) {
       const c = countrySelect.value === "__all__" ? "All" : countrySelect.value;
       const selected = getSelectedUILabels().length;
       statsBox.innerHTML = `
@@ -184,12 +267,11 @@
         <div><b>Visible points:</b> ${filteredCount}</div>
         <div><b>Country:</b> ${c}</div>
         <div><b>Selected types:</b> ${selected} / ${TYPE_UI.length}</div>
-        ${note ? `<div style="margin-top:8px;color:#b00020;"><b>Note:</b> ${note}</div>` : ""}
       `;
     }
 
     function applyFilters({ fitToFiltered = false } = {}) {
-      if (!layerReady || !ACTIVE_LAYER_ID) return;
+      if (!layerReady) return;
 
       const cVal = countrySelect.value;
       const allowedTypes = getAllowedTypeValuesFromUI();
@@ -204,7 +286,7 @@
         filters.push(["==", ["to-string", ["get", FIELD_COUNTRY]], cVal]);
       }
 
-      map.setFilter(ACTIVE_LAYER_ID, filters);
+      map.setFilter("points-layer", filters);
 
       const filtered = currentFilteredFeatures();
       updateStats(filtered.length, geojson?.features?.length || 0);
@@ -223,27 +305,11 @@
 
     buildTypeLegend();
 
-    // Promise wrapper around map.loadImage (same method as Mapbox docs) :contentReference[oaicite:5]{index=5}
-    function loadImageAsync(url) {
-      return new Promise((resolve, reject) => {
-        map.loadImage(url, (err, img) => {
-          if (err) reject(err);
-          else resolve(img);
-        });
-      });
-    }
-
     map.on("load", async () => {
-      try {
-        const res = await fetch(GEOJSON_FILE);
-        geojson = await res.json();
-      } catch (e) {
-        statsBox.textContent = "Failed to load data.geojson (check file path / permissions).";
-        console.error(e);
-        return;
-      }
+      const res = await fetch(GEOJSON_FILE);
+      geojson = await res.json();
 
-      // Populate countries
+      // Country dropdown
       const countries = new Set();
       geojson.features.forEach(f => {
         const p = f.properties || {};
@@ -258,25 +324,24 @@
 
       map.addSource("points", { type: "geojson", data: geojson });
 
-      // Build color expression (for circles fallback, and for SDF icons if you use one)
+      // Build icon-color match expression by Type
       const colorMatch = ["match", ["to-string", ["get", FIELD_TYPE]]];
-      for (const ui of TYPE_UI) for (const dv of ui.dataValues) colorMatch.push(norm(dv), ui.color);
+      for (const ui of TYPE_UI) {
+        for (const dv of ui.dataValues) {
+          colorMatch.push(norm(dv), ui.color);
+        }
+      }
       colorMatch.push("#757575");
 
-      // Fit bounds early (even if icon fails)
-      allBounds = computeBounds(geojson.features);
-      fitAllPoints();
+      // Load your custom icon and make it SDF-enabled, then use icon-color
+      map.loadImage(ICON_URL, (err, image) => {
+        if (err) {
+          console.error("Icon load failed:", ICON_URL, err);
+          return;
+        }
 
-      // Show initial stats immediately (so it never stays on "Loading data…")
-      updateStats(geojson.features.length, geojson.features.length, "Loading marker icon…");
-
-      // Try to load your custom marker icon and add a SYMBOL layer (tutorial pattern) :contentReference[oaicite:6]{index=6}
-      try {
-        const img = await loadImageAsync(ICON_URL);
-
-        // If you want icon-color to work, the image should be SDF-enabled/recolorable :contentReference[oaicite:7]{index=7}
-        // This works best with a single-colour PNG on transparent background.
-        if (!map.hasImage("eg-marker")) map.addImage("eg-marker", img, { sdf: true });
+        // SDF enables icon-color / halo styling for symbol icons :contentReference[oaicite:5]{index=5}
+        if (!map.hasImage("eg-marker")) map.addImage("eg-marker", image, { sdf: true });
 
         map.addLayer({
           id: "points-layer",
@@ -284,7 +349,7 @@
           source: "points",
           layout: {
             "icon-image": "eg-marker",
-            "icon-size": 0.9,
+            "icon-size": 0.85,
             "icon-anchor": "bottom",
             "icon-allow-overlap": true
           },
@@ -295,63 +360,39 @@
           }
         });
 
-        ACTIVE_LAYER_ID = "points-layer";
         layerReady = true;
 
-        // Wire popup/cursor
-        map.on("click", ACTIVE_LAYER_ID, e => {
+        allBounds = computeBounds(geojson.features);
+        fitAllPoints();
+
+        updateStats(geojson.features.length, geojson.features.length);
+        applyFilters({ fitToFiltered: false });
+
+        // Popup + cursor
+        map.on("click", "points-layer", e => {
           const p = e.features[0].properties || {};
           const html = `
             <div class="popup-content">
-              ${Object.entries(p).slice(5, 67).map(([k, v]) => `<div><b>${k}</b>: ${v}</div>`).join("")}
+              ${Object.entries(p)
+                .slice(5, 67)
+                .map(([k, v]) => `<div><b>${k}</b>: ${v}</div>`)
+                .join("")}
             </div>`;
-          new mapboxgl.Popup().setLngLat(e.lngLat).setHTML(html).addTo(map);
-        });
-        map.on("mouseenter", ACTIVE_LAYER_ID, () => { map.getCanvas().style.cursor = "pointer"; });
-        map.on("mouseleave", ACTIVE_LAYER_ID, () => { map.getCanvas().style.cursor = ""; });
-
-        // Apply initial filters and clear the “loading icon” note
-        applyFilters({ fitToFiltered: false });
-
-      } catch (e) {
-        console.error("Icon failed to load:", ICON_URL, e);
-
-        // Fallback so the map still works (no hanging)
-        map.addLayer({
-          id: "points-layer-fallback",
-          type: "circle",
-          source: "points",
-          paint: {
-            "circle-radius": 6,
-            "circle-color": colorMatch,
-            "circle-stroke-color": "#ffffff",
-            "circle-stroke-width": 1
-          }
+          new mapboxgl.Popup()
+            .setLngLat(e.lngLat)
+            .setHTML(html)
+            .addTo(map);
         });
 
-        ACTIVE_LAYER_ID = "points-layer-fallback";
-        layerReady = true;
+        map.on("mouseenter", "points-layer", () => { map.getCanvas().style.cursor = "pointer"; });
+        map.on("mouseleave", "points-layer", () => { map.getCanvas().style.cursor = ""; });
+      });
 
-        map.on("click", ACTIVE_LAYER_ID, e => {
-          const p = e.features[0].properties || {};
-          const html = `
-            <div class="popup-content">
-              ${Object.entries(p).slice(5, 67).map(([k, v]) => `<div><b>${k}</b>: ${v}</div>`).join("")}
-            </div>`;
-          new mapboxgl.Popup().setLngLat(e.lngLat).setHTML(html).addTo(map);
-        });
-        map.on("mouseenter", ACTIVE_LAYER_ID, () => { map.getCanvas().style.cursor = "pointer"; });
-        map.on("mouseleave", ACTIVE_LAYER_ID, () => { map.getCanvas().style.cursor = ""; });
-
-        applyFilters({ fitToFiltered: false });
-
-        const filtered = currentFilteredFeatures();
-        updateStats(filtered.length, geojson.features.length, "Custom icon could not be loaded. Check ICON_URL + file type (must be PNG/JPG/WEBP).");
-      }
-
-      // UI events (work for either layer)
+      // Events
       countrySelect.addEventListener("change", () => applyFilters({ fitToFiltered: true }));
-      document.querySelectorAll(".typeCheck").forEach(cb => cb.addEventListener("change", () => applyFilters({ fitToFiltered: false })));
+      document.querySelectorAll(".typeCheck").forEach(cb => {
+        cb.addEventListener("change", () => applyFilters({ fitToFiltered: false }));
+      });
 
       resetBtn.addEventListener("click", () => {
         countrySelect.value = "__all__";
@@ -365,4 +406,3 @@
   </script>
 </body>
 </html>
-
