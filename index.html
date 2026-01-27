@@ -305,6 +305,7 @@ function buildTypeLegend() {
       }
 
       map.setFilter("points-layer", filters);
+      map.setFilter("marker-hole", filters);
 
       const filtered = currentFilteredFeatures();
       updateStats(filtered.length, geojson?.features?.length || 0);
@@ -398,6 +399,19 @@ function buildTypeLegend() {
         });
 
         layerReady = true;
+        map.addLayer({
+          id: "marker-hole",
+          type: "circle",
+          source: "points",
+          paint: {
+            "circle-radius": 3.2,          // hole size
+            "circle-color": "#ffffff",      // hole colour
+            "circle-stroke-width": 0        // optional
+          }
+        });
+
+// ensure the hole sits above the marker
+map.moveLayer("marker-hole");
 
         // Apply initial filters (All/All)
         applyFilters({ fitToFiltered: false });
@@ -444,6 +458,7 @@ function buildTypeLegend() {
   </script>
 </body>
 </html>
+
 
 
 
