@@ -360,7 +360,7 @@
 
         // sdf:true enables icon-color / halos for the custom icon
         if (!map.hasImage("eg-marker")) {
-          map.addImage("eg-marker", image);
+          map.addImage("eg-marker", image, { sdf: true });
         }
 
         map.addLayer({
@@ -369,7 +369,7 @@
           source: "points",
           layout: {
             "icon-image": "eg-marker",
-            "icon-size": 0.1,
+            "icon-size": 0.35,
             "icon-anchor": "bottom",
             "icon-allow-overlap": true
           },
@@ -427,5 +427,6 @@
   </script>
 </body>
 </html>
+
 
 
