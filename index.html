@@ -161,8 +161,8 @@
     const FIELD_COUNTRY = "Installation type - Country";
     const GEOJSON_FILE = "./data.geojson";
 
-    // Your custom icon (upload this PNG to your server)
-    const ICON_URL = "./eg-marker.png"; 
+    // Your icon sits next to index.html and data.geojson
+    const ICON_URL = "./eg-marker.png";
 
     const countrySelect = document.getElementById("countrySelect");
     const resetBtn = document.getElementById("resetBtn");
@@ -259,7 +259,7 @@
       });
     }
 
-    function updateStats(filteredCount, totalCount) {
+    function updateStats(filteredCount, totalCount, note = "") {
       const c = countrySelect.value === "__all__" ? "All" : countrySelect.value;
       const selected = getSelectedUILabels().length;
       statsBox.innerHTML = `
@@ -267,6 +267,7 @@
         <div><b>Visible points:</b> ${filteredCount}</div>
         <div><b>Country:</b> ${c}</div>
         <div><b>Selected types:</b> ${selected} / ${TYPE_UI.length}</div>
+        ${note ? `<div style="margin-top:8px;color:#b00020;"><b>Note:</b> ${note}</div>` : ""}
       `;
     }
 
@@ -306,8 +307,15 @@
     buildTypeLegend();
 
     map.on("load", async () => {
-      const res = await fetch(GEOJSON_FILE);
-      geojson = await res.json();
+      // Load GeoJSON
+      try {
+        const res = await fetch(GEOJSON_FILE);
+        geojson = await res.json();
+      } catch (e) {
+        statsBox.textContent = "Failed to load data.geojson (check file path / permissions).";
+        console.error(e);
+        return;
+      }
 
       // Country dropdown
       const countries = new Set();
@@ -324,7 +332,7 @@
 
       map.addSource("points", { type: "geojson", data: geojson });
 
-      // Build icon-color match expression by Type
+      // Build icon-color expression by Type (raw values)
       const colorMatch = ["match", ["to-string", ["get", FIELD_TYPE]]];
       for (const ui of TYPE_UI) {
         for (const dv of ui.dataValues) {
@@ -333,15 +341,27 @@
       }
       colorMatch.push("#757575");
 
-      // Load your custom icon and make it SDF-enabled, then use icon-color
+      // Fit initial view and show stats immediately
+      allBounds = computeBounds(geojson.features);
+      fitAllPoints();
+      updateStats(geojson.features.length, geojson.features.length, "Loading marker icon…");
+
+      // Load your PNG icon and use it as an SDF image so icon-color works
       map.loadImage(ICON_URL, (err, image) => {
         if (err) {
           console.error("Icon load failed:", ICON_URL, err);
+          updateStats(
+            geojson.features.length,
+            geojson.features.length,
+            "Could not load eg-marker.png. Ensure it is in the same folder as index.html and named exactly eg-marker.png."
+          );
           return;
         }
 
-        // SDF enables icon-color / halo styling for symbol icons :contentReference[oaicite:5]{index=5}
-        if (!map.hasImage("eg-marker")) map.addImage("eg-marker", image, { sdf: true });
+        // sdf:true enables icon-color / halos for the custom icon
+        if (!map.hasImage("eg-marker")) {
+          map.addImage("eg-marker", image, { sdf: true });
+        }
 
         map.addLayer({
           id: "points-layer",
@@ -349,7 +369,7 @@
           source: "points",
           layout: {
             "icon-image": "eg-marker",
-            "icon-size": 0.85,
+            "icon-size": 0.9,
             "icon-anchor": "bottom",
             "icon-allow-overlap": true
           },
@@ -362,10 +382,7 @@
 
         layerReady = true;
 
-        allBounds = computeBounds(geojson.features);
-        fitAllPoints();
-
-        updateStats(geojson.features.length, geojson.features.length);
+        // Apply initial filters (All/All)
         applyFilters({ fitToFiltered: false });
 
         // Popup + cursor
@@ -386,9 +403,13 @@
 
         map.on("mouseenter", "points-layer", () => { map.getCanvas().style.cursor = "pointer"; });
         map.on("mouseleave", "points-layer", () => { map.getCanvas().style.cursor = ""; });
+
+        // Refresh stats (remove loading note)
+        const filtered = currentFilteredFeatures();
+        updateStats(filtered.length, geojson.features.length);
       });
 
-      // Events
+      // UI events
       countrySelect.addEventListener("change", () => applyFilters({ fitToFiltered: true }));
       document.querySelectorAll(".typeCheck").forEach(cb => {
         cb.addEventListener("change", () => applyFilters({ fitToFiltered: false }));
